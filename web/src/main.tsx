@@ -11,6 +11,7 @@ import "./app/strings";
 import "./app/strings-agent";
 
 const Landing = lazy(() => import("./routes/Landing"));
+const ArchLab = lazy(() => import("./routes/ArchLab"));
 const Home = lazy(() => import("./app/Home"));
 const NewChest = lazy(() => import("./app/NewChest"));
 const Chest = lazy(() => import("./app/Chest"));
@@ -24,6 +25,7 @@ const page = (el: React.ReactNode) => <Suspense fallback={<div className="board"
 
 const router = createBrowserRouter([
   { path: "/", element: page(<Landing />) },
+  { path: "/lab", element: page(<ArchLab />) },
   { path: "/app", element: page(<Home />) },
   { path: "/app/new", element: page(<NewChest />) },
   { path: "/c/:address", element: page(<Chest />) },
