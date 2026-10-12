@@ -49,5 +49,12 @@
     "implementation": "0xf14A2B78518e2BC92E085B4249b67a00AabCAb24",
     "demoChest": "0xD08F601db4dF673525B95E98985a8049774aae91",
     "deployedAt": "2026-10-10"
+  },
+  "fx": {
+    "router": "0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77",
+    "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+    "eurc": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+    "proofSwapTx": "0xcd1ed40e2d8604a400f5cfe02b9d334febafad3e13bc306005f3092038a44fd4",
+    "proof": "0.10 USDC -> 0.089163 EURC"
   }
 }
