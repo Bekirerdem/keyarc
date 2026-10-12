@@ -2,10 +2,10 @@
   "chainId": 5042,
   "usdc": "0x3600000000000000000000000000000000000000",
   "memo": "0x5294E9927c3306DcBaDb03fe70b92e01cCede505",
-  "factory": "0xA5B4cAD4f05371EDbb169CAe63F2eFB7Ee4752BA",
-  "implementation": "0xf14A2B78518e2BC92E085B4249b67a00AabCAb24",
+  "factory": "0x295F88F793E38eB8be6684b13e02799aADAEd0d9",
+  "implementation": "0x95aAa5594942912D4d5011d64f876069F2D37CC9",
   "deployer": "0x4Ec4338211a803c00e592daAa62F2Ea79C86e51d",
-  "deployedAt": "2026-10-10",
+  "deployedAt": "2026-10-12",
   "proof": {
     "collective": "0x1Bbe31a437C1B591895cBC4f3F3A25d336Ac5203",
     "members": [
@@ -24,16 +24,16 @@
     "implementation": "0x8af27fa90b013D2Ec01404C7BcCB882d27514061",
     "deployedAt": "2026-10-09"
   },
-  "version": "v2",
+  "version": "v3",
   "demo": {
-    "collective": "0xD08F601db4dF673525B95E98985a8049774aae91",
+    "collective": "0xd612E26C268375d7ec80FeC3c35623Db9E58aa2c",
     "name": "Keyarc Studio",
     "members": [
       "0x39AEfbC8388da12907A21d9De888B288a9fa5794",
       "0x4Ec4338211a803c00e592daAa62F2Ea79C86e51d"
     ],
     "agent": "0xBB682c02E3429d808499c1Ec5414b34113A21017",
-    "createTx": "0x39561d1baa26317a6c3c1420cc749bbb4958f14c82fa5a277576519cd7b6047f",
+    "createTx": "0x4e05c40b90b3c2a00801db601ebf6fe1513669e30b4ec9b2a58ef1c17a3ef4ab",
     "rules": {
       "reserveBps": 1000,
       "reserveTarget": "5 USDC",
@@ -43,5 +43,11 @@
       "timelock": "1h",
       "period": "7d"
     }
+  },
+  "v2": {
+    "factory": "0xA5B4cAD4f05371EDbb169CAe63F2eFB7Ee4752BA",
+    "implementation": "0xf14A2B78518e2BC92E085B4249b67a00AabCAb24",
+    "demoChest": "0xD08F601db4dF673525B95E98985a8049774aae91",
+    "deployedAt": "2026-10-10"
   }
 }

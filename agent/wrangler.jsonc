@@ -6,7 +6,7 @@
   "triggers": { "crons": [] }, // paused until a real team uses it; /run still works on demand
   "kv_namespaces": [{ "binding": "AGENT_KV", "id": "0106e2622ddd4bd4b0be4b972d97e6f0" }],
   "vars": {
-    "CHESTS": "0xD08F601db4dF673525B95E98985a8049774aae91",
+    "CHESTS": "0xd612E26C268375d7ec80FeC3c35623Db9E58aa2c",
     "ALLOWED_ORIGINS": "https://keyarc.pages.dev,https://keyarc.app,http://localhost:5180"
   },
   "observability": { "enabled": true }

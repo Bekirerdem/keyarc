@@ -76,6 +76,8 @@ contract Collective is Initializable, ReentrancyGuard {
     mapping(uint256 => mapping(address => bool)) public hasVoted;
     /// @notice Inflow references (e.g. the incoming tx hash) already attributed; makes agent retries idempotent.
     mapping(bytes32 => bool) public usedRef;
+    /// @notice Where a member's share is sent at payout; zero means the member's own address.
+    mapping(address => address) public payoutTo;
 
     event CollectiveInitialized(string name, address[] members, address agent);
     event InvoiceCreated(
@@ -91,6 +93,7 @@ contract Collective is Initializable, ReentrancyGuard {
     event Paid(uint256 indexed period, address indexed member, uint256 amount);
     event PayoutDeferred(uint256 indexed period, address indexed member, uint256 amount);
     event Claimed(address indexed member, address to, uint256 amount);
+    event PayoutAddressSet(address indexed member, address to);
     event Distributed(uint256 indexed period, uint256 total, uint256 carried);
     event Proposed(
         uint256 indexed id, Kind kind, address indexed proposer, bytes32 ref, bytes payload, uint64 executableAt, uint32 votesNeeded
@@ -306,6 +309,13 @@ contract Collective is Initializable, ReentrancyGuard {
         emit Distributed(p, paid, pool);
     }
 
+    /// @notice Send my future shares to `to` (another wallet, an exchange deposit address); zero resets to my own.
+    /// Only ever affects the caller's own payouts.
+    function setPayoutAddress(address to) external onlyMember {
+        payoutTo[msg.sender] = to;
+        emit PayoutAddressSet(msg.sender, to);
+    }
+
     /// @notice Collect a payout that could not be pushed (e.g. recipient blocklisted). May go to another address.
     function claim(address to) external nonReentrant {
         uint256 amount = owed[msg.sender];
@@ -447,14 +457,18 @@ contract Collective is Initializable, ReentrancyGuard {
         emit ExpensePaid(to, amount, ref);
     }
 
-    function _payOut(uint256 p, address to, uint256 amount) internal {
-        (bool ok, bytes memory ret) = address(usdc).call(abi.encodeCall(IERC20.transfer, (to, amount)));
+    /// @dev Pushes a member's share to their chosen address. A failed push stays owed to the member
+    /// (never to the destination), so only the member can claim it elsewhere.
+    function _payOut(uint256 p, address member, uint256 amount) internal {
+        address dest = payoutTo[member];
+        if (dest == address(0)) dest = member;
+        (bool ok, bytes memory ret) = address(usdc).call(abi.encodeCall(IERC20.transfer, (dest, amount)));
         if (ok && (ret.length == 0 || abi.decode(ret, (bool)))) {
-            emit Paid(p, to, amount);
+            emit Paid(p, member, amount);
         } else {
-            owed[to] += amount;
+            owed[member] += amount;
             totalOwed += amount;
-            emit PayoutDeferred(p, to, amount);
+            emit PayoutDeferred(p, member, amount);
         }
     }
 
