@@ -64,8 +64,3 @@ export function clearOdo(el: HTMLElement) {
   state.delete(el);
   el.innerHTML = "";
 }
-
-/** Current value of an odometer (for verification hooks). */
-export function getOdo(el: HTMLElement): number {
-  return state.get(el)?.v ?? -1;
-}

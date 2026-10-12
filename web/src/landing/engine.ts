@@ -1,168 +1,58 @@
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import Lenis from "lenis";
 import { setupCursor } from "./cursor";
-import { LAND, POP, SHIFT, baseRot, clamp, type Point } from "./motion";
-import { clearOdo, getOdo, makeOdo, setOdo } from "./odometer";
+import { LAND, LEAVE, POP, SHIFT, baseRot, clamp, type Point } from "./motion";
+import { clearOdo, makeOdo, setOdo } from "./odometer";
 import { Bead, Rope, stagePoint, type Scene } from "./rope";
 
 gsap.registerPlugin(ScrollTrigger);
 
-type TL = gsap.core.Timeline;
 type SlamOptions = { x?: number; y?: number; rot?: number; dur?: number };
 
-// ── the board ─────────────────────────────────────────────────────────────
-// Desktop is one big cork board and a camera that flies between eight scenes (no crossfades:
-// pan, pull back, push in). Each scene is a 1400×900 patch of the board at a fixed spot.
-const SCENE_W = 1400;
-const SCENE_H = 900;
-const ORDER = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"] as const;
-type SceneId = (typeof ORDER)[number];
-const LAYOUT: Record<SceneId, [number, number]> = {
-  s1: [0, 0],
-  s2: [1720, 240],
-  s3: [3440, 0],
-  s4: [3440, 1260],
-  s5: [1720, 1480],
-  s6: [0, 1260],
-  s7: [0, 2620],
-  s8: [1720, 2780],
-};
-const WORLD_W = 3440 + SCENE_W;
-const WORLD_H = 2780 + SCENE_H + 120;
-/** The one red thread runs through these pins, scene to scene. */
-const ANCHORS = ["#pay", "#sheet", "#job", "#agent", "#mail", "#ballot", "#st1", "#period"];
-const ROPE_SCENES = ["s1", "s2", "s3"] as const;
-
-/** Wires the landing inside `root` and returns a full cleanup (timelines, ScrollTriggers, Lenis,
- *  rAF, listeners, observers, and every DOM change it made). */
+/** Wires every scene of the workshop-board landing inside `root` and returns a full cleanup
+ *  (timelines, ScrollTriggers, rAF, listeners, observers and every DOM node it created). */
 export function initLanding(root: HTMLElement): () => void {
-  const q = <E extends HTMLElement = HTMLElement>(sel: string): E => {
-    const el = root.querySelector<E>(sel);
+  const q = <T extends HTMLElement = HTMLElement>(sel: string): T => {
+    const el = root.querySelector<T>(sel);
     if (!el) throw new Error(`landing: missing ${sel}`);
     return el;
   };
-  const qa = <E extends HTMLElement = HTMLElement>(sel: string): E[] => [...root.querySelectorAll<E>(sel)];
+  const qa = <T extends HTMLElement = HTMLElement>(sel: string): T[] => [...root.querySelectorAll<T>(sel)];
 
   const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const lang = document.documentElement.lang === "tr" ? "tr-TR" : "en-US";
   const cleanups: Array<() => void> = [];
+  const createdNodes: Element[] = [];
   let alive = true;
   let raf = 0;
-  let mode: "cam" | "flow" = "flow";
 
-  const world = q(".world");
-  const track = q(".track");
-  const cluster = Object.fromEntries(ORDER.map((id) => [id, q(`#${id}`)])) as Record<SceneId, HTMLElement>;
-
-  // ── kinetic type: every big line is split into words → letters ─────────
-  const kinLines = qa(".kin .kl");
-  const kinHtml = kinLines.map((l) => l.innerHTML);
-  kinLines.forEach((line) => {
-    const words = (line.textContent ?? "").split(" ");
-    line.innerHTML = "";
-    words.forEach((w, i) => {
-      const ws = document.createElement("span");
-      ws.className = "w";
-      [...w].forEach((ch) => {
-        const c = document.createElement("span");
-        c.className = "ch";
-        c.textContent = ch;
-        ws.appendChild(c);
-      });
-      line.appendChild(ws);
-      if (i < words.length - 1) line.appendChild(document.createTextNode(" "));
-    });
-  });
-  const chars = (scope: HTMLElement) => [...scope.querySelectorAll<HTMLElement>(".kin .ch")];
-
+  // DOM the engine rewrites; restored on cleanup so a remount (StrictMode) starts clean.
+  const headlineSpans = qa("h1 .line>span");
+  const headlineHtml = headlineSpans.map((s) => s.innerHTML);
   const odos = qa(".odo");
-  odos.forEach(makeOdo);
+  const lines = qa("#receipt .ln");
+  const ptapeTicks = q("#ptape .ticks");
+  const ptapeDays = q("#ptape .days");
 
-  // typed lines: shown text is a pure function of progress, so scrubbing back and forth is exact
-  const typed = qa(".tl");
-  const typeGroup = (els: HTMLElement[], dur: number) => {
-    const total = els.reduce((a, e) => a + (e.dataset.text ?? "").length, 0);
-    return value(0, total, dur, "none", (n) => {
-      let left = Math.round(n);
-      els.forEach((e) => {
-        const t = e.dataset.text ?? "";
-        const k = clamp(left, 0, t.length);
-        left -= t.length;
-        e.textContent = t.slice(0, k);
-        e.classList.toggle("typing", k > 0 && k < t.length);
-      });
-    });
-  };
-
-  // live numbers from Arc: rendered at whatever progress their scene reached
-  const stats = qa(".stat-num");
-  const renderStat = (el: HTMLElement, p: number) => {
-    el.dataset.p = String(p);
-    const v = el.dataset.value;
-    if (!v || p <= 0) {
-      el.textContent = "—";
-      return;
-    }
-    const dec = Number(el.dataset.dec ?? 0);
-    el.textContent = (p * Number(v)).toLocaleString(lang, { minimumFractionDigits: dec, maximumFractionDigits: dec });
-  };
-  stats.forEach((el) => {
-    const on = () => renderStat(el, Number(el.dataset.p ?? 0));
-    el.addEventListener("keyarc:value", on);
-    cleanups.push(() => el.removeEventListener("keyarc:value", on));
-  });
-
-  // ── rope scenes ─────────────────────────────────────────────────────────
-  const scenes = {} as Record<(typeof ROPE_SCENES)[number], Scene>;
-  ROPE_SCENES.forEach((id) => {
-    const sec = cluster[id];
-    const canvas = sec.querySelector<HTMLCanvasElement>("canvas.threads");
+  // ── scenes ──────────────────────────────────────────────────────────────
+  const scenes: Record<string, Scene> = {};
+  qa("[data-scene]").forEach((sec) => {
+    const stage = sec.querySelector<HTMLElement>(".stage");
+    const canvas = stage?.querySelector<HTMLCanvasElement>("canvas.threads");
     const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    scenes[id] = { sec, stage: sec, canvas, ctx, ropes: [], beads: [], active: false, rect: sec.getBoundingClientRect(), scale: 1 };
+    if (!stage || !canvas || !ctx || !sec.dataset.scene) return;
+    scenes[sec.dataset.scene] = { sec, stage, canvas, ctx, ropes: [], beads: [], active: true, rect: stage.getBoundingClientRect() };
   });
   const S = scenes;
 
-  const ropesOf = new Map<Element, Rope[]>();
-  const tie = (sc: Scene, a: string, b: string, slack: number) => {
-    const r = new Rope(sc, q(a), q(b), { slack });
-    [a, b].forEach((sel) => {
-      const el = q(sel);
-      ropesOf.set(el, [...(ropesOf.get(el) ?? []), r]);
-    });
-    return r;
-  };
-  const r1 = [tie(S.s1, "#pay", "#mB", 1.12), tie(S.s1, "#pay", "#mO", 1.1), tie(S.s1, "#pay", "#mN", 1.14)];
-  const r2notes = [tie(S.s2, "#n1", "#sheet", 1.06), tie(S.s2, "#n2", "#sheet", 1.08), tie(S.s2, "#n3", "#sheet", 1.07)];
-  const trustRope = tie(S.s2, "#tB", "#tO", 1.16);
-  const tInv = tie(S.s3, "#inv", "#job", 1.08);
-  const tRes = tie(S.s3, "#job", "#res", 1.1);
-  const tB = tie(S.s3, "#job", "#pB", 1.12);
-  const tO = tie(S.s3, "#job", "#pO", 1.06);
-  const bInv = new Bead(S.s3, tInv, 9, "2,000 USDC");
-  const bRes = new Bead(S.s3, tRes, 4.4, lang === "tr-TR" ? "200 · yedek" : "200 · reserve");
-  const bB = new Bead(S.s3, tB, 7.6, "1,080 · Bekir");
-  const bO = new Bead(S.s3, tO, 6.2, "720 · Ömer");
-  const beads = [bInv, bRes, bB, bO];
-  const allRopes = [...r1, ...r2notes, trustRope, tInv, tRes, tB, tO];
-
-  // the trust chip rides the middle of its thread
-  const trustChip = q("#trust");
-  const placeTrust = () => {
-    if (mode !== "cam" || !trustRope.pts || trustRope.reveal < 0.5) {
-      trustChip.style.transform = "";
-      return;
-    }
-    const p = trustRope.pointAt(0.5);
-    trustChip.style.transform = `translate(${p.x - trustChip.offsetWidth / 2}px,${p.y + 10}px)`;
-  };
-
-  // pointer + scroll speed feed the threads
-  let mouse: Point | null = null;
+  // pointer + scroll velocity feed the ropes
+  let mouseClient: Point | null = null;
   let scrollV = 0;
-  const onMove = (e: PointerEvent) => (mouse = { x: e.clientX, y: e.clientY });
-  const onLeave = () => (mouse = null);
+  const onMove = (e: PointerEvent) => {
+    mouseClient = { x: e.clientX, y: e.clientY };
+  };
+  const onLeave = () => {
+    mouseClient = null;
+  };
   window.addEventListener("pointermove", onMove, { passive: true });
   document.documentElement.addEventListener("pointerleave", onLeave);
   cleanups.push(() => {
@@ -170,29 +60,20 @@ export function initLanding(root: HTMLElement): () => void {
     document.documentElement.removeEventListener("pointerleave", onLeave);
   });
 
-  // ── camera ──────────────────────────────────────────────────────────────
-  const centerOf = (id: SceneId): Point => ({ x: LAYOUT[id][0] + SCENE_W / 2, y: LAYOUT[id][1] + SCENE_H / 2 });
-  const cam = { cx: centerOf("s1").x, cy: centerOf("s1").y, z: 1, r: 0 };
-  const intro = { z: 0.8 };
-  const fit = () => Math.min(innerWidth / 1500, innerHeight / 960);
-  let current: SceneId = "s1";
-  const applyCamera = () => {
-    if (mode !== "cam") return;
-    const s = fit() * cam.z * intro.z;
-    world.style.transform = `translate3d(${innerWidth / 2}px,${innerHeight / 2}px,0) rotate(${cam.r}deg) scale(${s}) translate3d(${-cam.cx}px,${-cam.cy}px,0)`;
-    let best = Infinity;
-    for (const id of ORDER) {
-      const c = centerOf(id);
-      const d = Math.hypot(c.x - cam.cx, c.y - cam.cy);
-      if (d < best) {
-        best = d;
-        current = id;
-      }
-    }
-  };
+  // only simulate scenes that are on screen
+  const io = new IntersectionObserver(
+    (es) =>
+      es.forEach((e) => {
+        const s = Object.values(scenes).find((x) => x.sec === e.target);
+        if (s) s.active = e.isIntersecting;
+      }),
+    { rootMargin: "120px" },
+  );
+  Object.values(scenes).forEach((s) => io.observe(s.sec));
+  cleanups.push(() => io.disconnect());
 
   const sizeCanvas = (sc: Scene) => {
-    const dpr = Math.min(devicePixelRatio || 1, 1.75);
+    const dpr = Math.min(devicePixelRatio || 1, 2);
     const w = sc.stage.clientWidth;
     const h = sc.stage.clientHeight;
     if (sc.canvas.width !== Math.round(w * dpr) || sc.canvas.height !== Math.round(h * dpr)) {
@@ -202,432 +83,412 @@ export function initLanding(root: HTMLElement): () => void {
     sc.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
 
+  // ── ropes, beads, held tag ──────────────────────────────────────────────
+  const ropesOf = new Map<Element, Rope[]>();
+  const attach = (card: Element, rope: Rope) => {
+    const list = ropesOf.get(card) ?? [];
+    list.push(rope);
+    ropesOf.set(card, list);
+  };
+
+  const hr = [
+    new Rope(S.hero, q("#jWeb"), q("#mAli"), { slack: 1.12 }),
+    new Rope(S.hero, q("#jWeb"), q("#mAyse"), { slack: 1.14 }),
+    new Rope(S.hero, q("#jApi"), q("#mMeh"), { slack: 1.1 }),
+  ];
+  attach(q("#jWeb"), hr[0]); attach(q("#mAli"), hr[0]);
+  attach(q("#jWeb"), hr[1]); attach(q("#mAyse"), hr[1]);
+  attach(q("#jApi"), hr[2]); attach(q("#mMeh"), hr[2]);
+
+  const br = [
+    new Rope(S.but, q("#stA"), q("#sheetPin"), { slack: 1.06 }),
+    new Rope(S.but, q("#stB"), q("#sheetPin"), { slack: 1.08 }),
+    new Rope(S.but, q("#stC"), q("#sheetPin"), { slack: 1.07 }),
+  ];
+  br.forEach((r, i) => attach([q("#stA"), q("#stB"), q("#stC")][i], r));
+
+  const tInv = new Rope(S.so, q("#inv"), q("#soJob"), { slack: 1.08 });
+  const tRes = new Rope(S.so, q("#soJob"), q("#res"), { slack: 1.1 });
+  const tAli = new Rope(S.so, q("#soJob"), q("#pAli"), { slack: 1.12 });
+  const tAyse = new Rope(S.so, q("#soJob"), q("#pAyse"), { slack: 1.06 });
+  ([
+    ["#inv", tInv], ["#soJob", tInv], ["#soJob", tRes], ["#res", tRes],
+    ["#soJob", tAli], ["#pAli", tAli], ["#soJob", tAyse], ["#pAyse", tAyse],
+  ] as const).forEach(([sel, r]) => attach(q(sel), r));
+  const bInv = new Bead(S.so, tInv, 9, "2,000 USDC");
+  const bRes = new Bead(S.so, tRes, 4.2, "200 · reserve");
+  const bAli = new Bead(S.so, tAli, 7.6, "1,080 · Bekir");
+  const bAyse = new Bead(S.so, tAyse, 6.2, "720 · Ömer");
+  const beads = [bInv, bRes, bAli, bAyse];
+
+  const tHold = new Rope(S.rules, q("#sender"), q("#agent"), { slack: 1.16 });
+  attach(q("#sender"), tHold);
+  attach(q("#agent"), tHold);
+
+  // HELD tag hangs from the middle of the held thread and swings like a pendulum
+  const heldEl = q("#held");
+  const heldTag = {
+    a: 0,
+    va: 0,
+    lx: null as number | null,
+    vis: 0,
+    update() {
+      if (!tHold.pts || this.vis <= 0) {
+        heldEl.style.visibility = "hidden";
+        this.lx = null;
+        this.a = this.va = 0;
+        return;
+      }
+      const p = tHold.pointAt(0.5);
+      const ax = this.lx == null ? 0 : clamp(p.x - this.lx, -5, 5);
+      this.lx = p.x;
+      this.va += -this.a * 0.07 - this.va * 0.08 - ax * 0.8;
+      this.va = clamp(this.va, -6, 6);
+      this.a = clamp(this.a + this.va, -32, 32);
+      heldEl.style.visibility = "visible";
+      heldEl.style.transform = `translate(${p.x - heldEl.offsetWidth / 2}px,${p.y + 18}px) rotate(${this.a}deg) scale(${this.vis})`;
+    },
+  };
+
   const frame = () => {
     if (!alive) return;
     scrollV *= 0.9;
-    applyCamera();
-    if (mode === "cam") {
-      const ci = ORDER.indexOf(current);
-      for (const id of ROPE_SCENES) {
-        const sc = S[id];
-        sc.active = Math.abs(ORDER.indexOf(id) - ci) <= 1;
-        if (!sc.active) continue;
-        sc.rect = sc.stage.getBoundingClientRect();
-        sc.scale = sc.rect.width / (sc.stage.offsetWidth || 1);
-        sizeCanvas(sc);
-        const m = mouse && !REDUCED ? { x: (mouse.x - sc.rect.left) / sc.scale, y: (mouse.y - sc.rect.top) / sc.scale } : null;
-        sc.ctx.clearRect(0, 0, sc.canvas.width, sc.canvas.height);
-        for (const r of sc.ropes) {
-          r.step(m, scrollV);
-          r.draw(sc.ctx);
-        }
-        for (const b of sc.beads) b.draw(sc.ctx);
+    for (const sc of Object.values(scenes)) {
+      if (!sc.active) continue;
+      sc.rect = sc.stage.getBoundingClientRect();
+      sizeCanvas(sc);
+      const m = mouseClient && !REDUCED ? { x: mouseClient.x - sc.rect.left, y: mouseClient.y - sc.rect.top } : null;
+      sc.ctx.clearRect(0, 0, sc.canvas.width, sc.canvas.height);
+      for (const r of sc.ropes) {
+        r.step(m, REDUCED ? 0 : scrollV);
+        r.draw(sc.ctx);
       }
-      placeTrust();
+      for (const b of sc.beads) b.draw(sc.ctx);
     }
+    heldTag.update();
     raf = requestAnimationFrame(frame);
   };
 
-  // ── building blocks ─────────────────────────────────────────────────────
-  /** Value tween whose onUpdate gets the current value. */
-  function value(from: number, to: number, duration: number, ease: string, onUpdate: (v: number) => void) {
-    const o = { v: from };
-    return gsap.to(o, { v: to, duration, ease, onUpdate: () => onUpdate(o.v) });
-  }
-  /** Instant switch on a timeline: `true` past its midpoint, `false` before. Scrubs both ways. */
-  const toggle = (onChange: (on: boolean) => void) => value(0, 1, 0.01, "none", (v) => onChange(v > 0.5));
+  // ── static DOM preparation ──────────────────────────────────────────────
+  odos.forEach(makeOdo);
+  for (let i = 1; i <= 31; i++) ptapeTicks.appendChild(document.createElement("i"));
+  [1, 5, 10, 15, 20, 25, 31].forEach((n) => {
+    const s = document.createElement("span");
+    s.textContent = String(n).padStart(2, "0");
+    ptapeDays.appendChild(s);
+  });
+  // split the hero headline into letters for a 1f glyph stagger
+  const walk = (n: Node) => {
+    [...n.childNodes].forEach((c) => {
+      if (c.nodeType === Node.TEXT_NODE) {
+        const f = document.createDocumentFragment();
+        [...(c.textContent ?? "")].forEach((ch) => {
+          const s = document.createElement("span");
+          s.className = "ch";
+          s.textContent = ch === " " ? " " : ch; // nbsp: inline-block spans collapse a plain space
+          f.appendChild(s);
+        });
+        c.replaceWith(f);
+      } else walk(c);
+    });
+  };
+  headlineSpans.forEach(walk);
 
-  /** A card flies in, hits the cork, squashes, overshoots and settles; the pin is punched last. */
+  const totalChars = lines.reduce((a, l) => a + (l.dataset.text ?? "").length, 0);
+  const typeTo = (n: number) => {
+    let left = Math.round(n);
+    lines.forEach((l) => {
+      const t = l.dataset.text ?? "";
+      const k = clamp(left, 0, t.length);
+      left -= t.length;
+      const shown = t.slice(0, k).replace(/(held|reminded|EURC|passed 2\/3|bekletildi|hatırlatıldı|kabul 2\/3)/g, "<b>$1</b>");
+      l.innerHTML = shown + (k > 0 && k < t.length ? '<span class="caret"></span>' : "");
+    });
+  };
+
+  // ── building blocks ─────────────────────────────────────────────────────
+  /** A card flies in, hits the cork, squashes, overshoots, settles; the pin is punched in last
+   *  and the attached threads twang. */
   const slam = (el: HTMLElement, o: SlamOptions = {}) => {
     const r = baseRot(el);
     const pin = el.querySelector(":scope > .pin");
     const tl = gsap.timeline();
     tl.fromTo(
       el,
-      { x: o.x ?? 0, y: o.y ?? -340, rotation: r + (o.rot ?? gsap.utils.random(-16, 16)), scale: 1.16, autoAlpha: 0 },
+      { x: o.x ?? 0, y: o.y ?? -340, rotation: r + (o.rot ?? gsap.utils.random(-18, 18)), scale: 1.18, autoAlpha: 0 },
       { x: 0, y: 0, rotation: r, scale: 1, autoAlpha: 1, duration: o.dur ?? 0.42, ease: LAND, immediateRender: true },
     )
-      .to(el, { scaleX: 1.04, scaleY: 0.95, duration: 0.06, ease: SHIFT })
-      .to(el, { scaleX: 1, scaleY: 1, duration: 0.32, ease: POP });
+      .to(el, { scaleX: 1.045, scaleY: 0.95, duration: 0.06, ease: SHIFT })
+      .to(el, { scaleX: 1, scaleY: 1, duration: 0.34, ease: POP });
     if (pin)
-      tl.fromTo(pin, { y: -30, scale: 2.2, autoAlpha: 0 }, { y: 0, scale: 1, autoAlpha: 1, duration: 0.26, ease: POP, immediateRender: true }, "<-.06");
+      tl.fromTo(pin, { y: -30, scale: 2.3, autoAlpha: 0 }, { y: 0, scale: 1, autoAlpha: 1, duration: 0.26, ease: POP, immediateRender: true }, "<-.06")
+        .to(pin, { y: -7, duration: 0.07, ease: LAND }, ">-.08")
+        .to(pin, { y: 0, duration: 0.18, ease: POP });
     tl.add(() => (ropesOf.get(el) ?? []).forEach((rp) => rp.pluck(9)), "<-.2");
     return tl;
   };
-  /** Letters rise out of their line, one frame apart. */
-  const rise = (scope: HTMLElement, dur = 0.5) =>
-    gsap.fromTo(chars(scope), { yPercent: 115, rotation: 7 }, { yPercent: 0, rotation: 0, duration: dur, ease: LAND, stagger: 0.012, immediateRender: true });
-  const stampIn = (el: Element) => gsap.fromTo(el, { scale: 2.3, rotation: -30, autoAlpha: 0 }, { scale: 1, rotation: -12, autoAlpha: 1, duration: 0.3, ease: POP, immediateRender: true });
 
-  // ── scenes (each returns its own timeline; the camera or the scroll decides when it runs) ──
-  const beats: Record<Exclude<SceneId, "s1">, () => TL> = {
-    s2: () => {
-      const tl = gsap.timeline();
-      const sheet = q("#sheet");
-      const cells = qa("#sheet .cell");
-      tl.add(rise(q(".s2-copy")))
-        .add(slam(sheet, { y: -460, rot: -18, dur: 0.55 }), "<.15")
-        .add(slam(q("#n1"), { x: 220, y: -200, rot: 22 }), "<.35")
-        .add(slam(q("#n2"), { x: 240, y: 180, rot: -18 }), "<.12")
-        .add(slam(q("#n3"), { y: 260, rot: 16 }), "<.12")
-        .to(r2notes, { reveal: 1, duration: 0.45, ease: LAND, stagger: 0.08 }, "<.2")
-        // one person edits the numbers at 02:14
-        .add(value(0, 1, 1, "none", (p) => {
-          cells.forEach((c, i) => {
-            const a = Number(c.dataset.a);
-            const b = Number(c.dataset.b);
-            const wob = p > 0 && p < 1 ? Math.round(Math.sin(p * 37 + i * 2.1) * (b - a) * 0.4) : 0;
-            const v = Math.round(a + (b - a) * p) + wob;
-            c.textContent = c.classList.contains("money") ? v.toLocaleString(lang) : `${v}%`;
-            c.classList.toggle("edited", p > 0.02 && a !== b);
-          });
-        }), "+=.05")
-        .add(slam(q("#tB"), { x: -240, y: 60, rot: -20 }), "<.1")
-        .add(slam(q("#tO"), { x: 260, y: 80, rot: 18 }), "<.1")
-        .to(trustRope, { reveal: 1, duration: 0.4, ease: LAND }, "<.25")
-        .fromTo(q("#trust"), { autoAlpha: 0, scale: 0.6 }, { autoAlpha: 1, scale: 1, duration: 0.3, ease: POP, immediateRender: true }, "<.2")
-        // the trust thread pulls tight, trembles, and snaps
-        .to(trustRope, { taut: 1, tautTarget: 1, holdTaut: 1, duration: 0.5, ease: SHIFT }, "+=.1")
-        .add(value(0, 1, 0.5, "none", (j) => (trustRope.jitter = j * 2.2)), "<")
-        .to([q("#tB"), q("#tO")], { x: (i: number) => (i ? 1 : -1) * (mode === "cam" ? 26 : 8), duration: 0.5, ease: SHIFT }, "<")
-        .addLabel("snap")
-        .add(toggle((on) => {
-          trustRope.setFree(on);
-          trustRope.jitter = on ? 0 : trustRope.jitter;
-          if (on) trustRope.pluck(14);
-          const chip = q("#trust");
-          chip.classList.toggle("snapped", on);
-          chip.textContent = on ? chip.dataset.b ?? chip.textContent : chip.dataset.a ?? chip.textContent;
-        }), "snap")
-        .to(q("#tB"), { x: () => (mode === "cam" ? -60 : -10), rotation: "-=8", duration: 0.4, ease: LAND }, "snap")
-        .to(q("#tO"), { x: () => (mode === "cam" ? 60 : 10), rotation: "+=9", duration: 0.4, ease: LAND }, "snap")
-        .to(sheet, { keyframes: { rotation: [-1.5, -3.2, 0.4, -2.6, -1.5], x: [0, -5, 6, -3, 0] }, duration: 0.45, ease: "none" }, "snap");
-      return tl;
-    },
-
-    s3: () => {
-      const tl = gsap.timeline();
-      const recv = (el: HTMLElement, rope: Rope) =>
-        gsap.timeline().to(el, { scale: 1.06, duration: 0.08, ease: SHIFT }).to(el, { scale: 1, duration: 0.4, ease: POP }).add(() => rope.pluck(8), 0);
-      const flow = (bead: Bead, dur: number) =>
-        value(0, 1, dur, SHIFT, (t) => {
-          bead.t = t;
-          bead.on = t > 0 && t < 1;
-        });
-      const burst = q("#burst");
-      tl.add(rise(q(".s3-copy")))
-        .fromTo(q(".s3-copy .body"), { y: 30, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.45, ease: LAND, immediateRender: true }, "<.3")
-        .add(slam(q("#inv"), { y: -320, rot: -18 }), "<.1")
-        .add(slam(q("#job"), { x: -280, y: -40, rot: 12 }), ">-.05")
-        .to(tInv, { reveal: 1, duration: 0.4, ease: LAND }, "<.2")
-        .add(flow(bInv, 1))
-        .add(recv(q("#job"), tInv), ">-.02")
-        .fromTo(burst, { autoAlpha: 1, scale: 0.2 }, {
-          scale: 1.6, autoAlpha: 0, duration: 0.5, ease: LAND,
-          onStart: () => {
-            const sc = S.s3;
-            sc.rect = sc.stage.getBoundingClientRect();
-            sc.scale = mode === "cam" ? sc.rect.width / (sc.stage.offsetWidth || 1) : 1;
-            const p = stagePoint(q("#job"), sc);
-            gsap.set(burst, { x: p.x, y: p.y });
-          },
-        }, "<")
-        .add(slam(q("#res"), { y: -280, rot: 14 }), "<.05")
-        .to(tRes, { reveal: 1, duration: 0.35, ease: LAND }, "<.2")
-        .add(flow(bRes, 0.7))
-        .add(recv(q("#res"), tRes))
-        .add(value(0, 200, 0.5, LAND, (v) => setOdo(q("#resAmt"), v)), "<")
-        .add(slam(q("#pB"), { y: 300, rot: -16 }), ">-.1")
-        .add(slam(q("#pO"), { y: 320, rot: 16 }), "<.1")
-        .to([tB, tO], { reveal: 1, duration: 0.4, ease: LAND, stagger: 0.08 }, "<.2")
-        .addLabel("split")
-        .add(flow(bB, 0.95), "split")
-        .add(flow(bO, 1.1), "split")
-        .add(recv(q("#pB"), tB), "split+=.95")
-        .add(recv(q("#pO"), tO), "split+=1.1")
-        .add(value(0, 1080, 0.6, LAND, (v) => setOdo(q("#bAmt"), v)), "split+=.95")
-        .add(value(0, 720, 0.6, LAND, (v) => setOdo(q("#oAmt"), v)), "split+=1.1")
-        .to([q("#pB"), q("#pO")], {
-          boxShadow: "0 0 0 3px #ffe08a, 0 0 40px 8px rgba(255,214,110,.7), 0 14px 28px -8px rgba(40,20,5,.45)",
-          duration: 0.3, ease: LAND, stagger: 0.1,
-        }, "split+=1.15");
-      return tl;
-    },
-
-    s4: () => {
-      const tl = gsap.timeline();
-      tl.add(rise(q(".s4-copy"))).add(slam(q("#agent"), { y: -380, rot: 16 }), "<.2");
-      ["b1", "b2", "b3"].forEach((id, i) => {
-        const bill = q(`#${id}`);
-        const at = i === 0 ? ">" : ">-.05";
-        tl.add(slam(bill, { x: i === 0 ? -320 : 320, y: i === 2 ? 260 : -140, rot: i % 2 ? 18 : -18 }), at)
-          .fromTo(bill.querySelector(".scan"), { left: "0%", autoAlpha: 1 }, { left: "100%", duration: 0.45, ease: SHIFT, immediateRender: true })
-          .set(bill.querySelector(".scan"), { autoAlpha: 0 })
-          .fromTo(q(`#ck${i + 1}`), { clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0% 0 0)", duration: 0.3, ease: LAND, immediateRender: true }, "<")
-          .add(stampIn(bill.querySelector(".paid") as Element), "<.15");
-      });
-      tl.fromTo(q("#agent .why"), { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: 0.3, ease: LAND, immediateRender: true });
-      return tl;
-    },
-
-    s5: () => {
-      const tl = gsap.timeline();
-      const mail = q("#mail");
-      tl.add(rise(q(".s5-copy")))
-        .add(slam(mail, { x: -360, y: -120, rot: -14, dur: 0.5 }), "<.2")
-        .add(toggle((on) => qa("#mail .sus").forEach((m) => m.classList.toggle("on", on))), "+=.1")
-        .fromTo(q("#mail .alarm"), { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.35, ease: LAND, immediateRender: true }, "<")
-        .to(mail, { keyframes: { x: [0, -7, 8, -5, 4, 0], rotation: [-2, -3.4, -0.6, -2.8, -1.4, -2] }, duration: 0.4, ease: "none" }, "<")
-        .add(slam(q("#anote"), { x: 300, y: -160, rot: 14 }), "<.1")
-        .add(typeGroup(qa("#anote .tl"), 1.1))
-        .add(stampIn(q("#heldstamp")), ">-.1")
-        .add(slam(q("#term"), { y: 300, rot: 8 }), "+=.05")
-        .add(typeGroup(qa("#term .tl"), 0.9))
-        .to(q("#term"), { keyframes: { x: [0, 6, -6, 3, 0] }, duration: 0.25, ease: "none" }, ">-.35")
-        .add(rise(q("#s5 .bigline"), 0.55), "+=.05");
-      return tl;
-    },
-
-    s6: () => {
-      const tl = gsap.timeline();
-      const ballot = q("#ballot");
-      tl.add(rise(q(".s6-copy"))).add(slam(ballot, { x: -360, y: -60, rot: -14 }), "<.2");
-      qa("#ballot .vote").slice(0, 2).forEach((v, i) => {
-        const splat = v.querySelector(".splat");
-        const stamp = v.querySelector(".stamp");
-        if (!splat || !stamp) return;
-        const at = `>${i ? "-.05" : "+=.05"}`;
-        tl.fromTo(splat, { scale: 0.2, autoAlpha: 0 }, { scale: 1.2, autoAlpha: 1, duration: 0.18, ease: LAND, immediateRender: true }, at)
-          .to(splat, { scale: 1.05, autoAlpha: 0.55, duration: 0.28, ease: LAND })
-          .add(stampIn(stamp), "<-.2")
-          .to(ballot, { y: 3, duration: 0.05, ease: SHIFT }, "<.05")
-          .to(ballot, { y: 0, duration: 0.2, ease: POP })
-          .add(value(i, i + 1, 0.22, LAND, (n) => setOdo(q("#voteOdo"), n)), "<-.15");
-      });
-      const label = q("#lockLabel");
-      tl.add(slam(q("#lock"), { y: 260, rot: 8 }), "+=.05")
-        .fromTo(q("#lockFill"), { scaleX: 0 }, { scaleX: 1, duration: 1, ease: "none", immediateRender: true })
-        .add(toggle((on) => {
-          label.textContent = (on ? label.dataset.b : label.dataset.a) ?? "";
-          q("#lock").classList.toggle("ready", on);
-        }), ">")
-        .add(slam(q("#acap"), { x: 300, y: -120, rot: 16 }), "<.05");
-      return tl;
-    },
-
-    s7: () => {
-      const tl = gsap.timeline();
-      tl.add(rise(q(".s7-copy")))
-        .fromTo(q(".livenote"), { autoAlpha: 0, y: 14 }, { autoAlpha: 1, y: 0, duration: 0.3, ease: LAND, immediateRender: true }, "<.3");
-      qa(".stats .stat").forEach((c, i) => tl.add(slam(c, { y: -300 - i * 40, rot: i % 2 ? 14 : -14 }), i ? "<.12" : ">-.1"));
-      tl.add(value(0, 1, 0.9, LAND, (p) => stats.forEach((el) => renderStat(el, p))), ">-.1")
-        .add(slam(q("#explorer"), { x: 260, y: 120, rot: 12 }), "<.2");
-      return tl;
-    },
-
-    s8: () => {
-      const tl = gsap.timeline();
-      tl.add(slam(q("#closeCard"), { y: 280, rot: -9, dur: 0.55 }))
-        .add(rise(q("#closeCard")), "<.25")
-        .add(slam(q("#period"), { y: -280, x: 180, rot: 30 }), ">-.2")
-        .fromTo(qa("#closeCard .body, #closeCard .btn"), { y: 24, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.4, ease: POP, stagger: 0.08, immediateRender: true }, "<.1");
-      return tl;
-    },
+  /** Value tween whose onUpdate gets the current value (keeps `this` out of callbacks). */
+  const value = (from: number, to: number, duration: number, ease: string, onUpdate: (v: number) => void) => {
+    const o = { v: from };
+    return gsap.to(o, { v: to, duration, ease, onUpdate: () => onUpdate(o.v) });
   };
+  /** Instant toggle placed on a timeline: fires with `true` past the midpoint, `false` before it. */
+  const toggle = (onChange: (on: boolean) => void) => value(0, 1, 0.01, "none", (v) => onChange(v > 0.5));
 
-  // opening: the board is dark, one payment lands in the light, the camera leans in
-  const buildIntro = () => {
-    const tl = gsap.timeline({ delay: 0.15 });
-    tl.fromTo(intro, { z: 0.78 }, { z: 1, duration: 2.2, ease: SHIFT }, 0)
-      .add(rise(q(".s1-copy"), 0.6), 0.25)
-      .fromTo(q(".eyebrow"), { y: -40, rotation: -12, autoAlpha: 0 }, { y: 0, rotation: -1, autoAlpha: 1, duration: 0.45, ease: POP, immediateRender: true }, 0.35)
-      .add(slam(q("#pay"), { y: -420, rot: -18, dur: 0.55 }), 0.7)
-      .fromTo(q("#s1 .night"), { "--spot": "0px" }, { "--spot": "260px", duration: 0.9, ease: LAND, immediateRender: true }, 0.7);
-    ["#mB", "#mO", "#mN"].forEach((s, i) => tl.add(slam(q(s), { y: -360 - i * 30 }), 1.15 + i * 0.12));
-    tl.to(r1, { reveal: 1, duration: 0.6, ease: LAND, stagger: 0.1 }, ">-.25")
-      .fromTo(q(".scrollhint"), { autoAlpha: 0, y: -10 }, { autoAlpha: 1, y: 0, duration: 0.4, ease: LAND, immediateRender: true }, ">");
-    return tl;
-  };
-
-  // ── the one thread through every scene (desktop) ───────────────────────
-  const SVGNS = "http://www.w3.org/2000/svg";
-  const svg = q<HTMLElement>(".mainthread") as unknown as SVGSVGElement;
-  const segs: SVGPathElement[] = [];
-  const worldPoint = (el: HTMLElement): Point => {
-    let x = el.offsetLeft + el.offsetWidth / 2;
-    let y = el.offsetTop;
-    let p = el.offsetParent as HTMLElement | null;
-    while (p && p !== world) {
-      x += p.offsetLeft;
-      y += p.offsetTop;
-      p = p.offsetParent as HTMLElement | null;
-    }
-    return { x, y };
-  };
-  const buildThread = () => {
-    svg.setAttribute("viewBox", `0 0 ${WORLD_W} ${WORLD_H}`);
-    svg.setAttribute("width", String(WORLD_W));
-    svg.setAttribute("height", String(WORLD_H));
-    const pts = ANCHORS.map((sel) => worldPoint(q(sel)));
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1];
-      const b = pts[i];
-      const dist = Math.hypot(b.x - a.x, b.y - a.y);
-      const sag = Math.min(300, dist * 0.2);
-      const d = `M${a.x},${a.y} C${a.x + (b.x - a.x) * 0.28},${a.y + (b.y - a.y) * 0.1 + sag} ${a.x + (b.x - a.x) * 0.72},${b.y - (b.y - a.y) * 0.1 + sag} ${b.x},${b.y}`;
-      const shade = document.createElementNS(SVGNS, "path");
-      shade.setAttribute("d", d);
-      shade.setAttribute("class", "shade");
-      const main = document.createElementNS(SVGNS, "path");
-      main.setAttribute("d", d);
-      main.setAttribute("class", "main");
-      svg.append(shade, main);
-      const len = main.getTotalLength();
-      [shade, main].forEach((p) => {
-        p.style.strokeDasharray = `${len}`;
-        p.style.strokeDashoffset = `${len}`;
-      });
-      segs.push(main, shade);
-    }
-  };
-  const segPair = (i: number) => [segs[i * 2], segs[i * 2 + 1]];
-
-  // ── modes ──────────────────────────────────────────────────────────────
-  let lenis: Lenis | null = null;
-  let master: TL | null = null;
-
-  const buildCamera = () => {
-    mode = "cam";
-    root.classList.add("cam");
-    ORDER.forEach((id) => {
-      cluster[id].style.left = `${LAYOUT[id][0]}px`;
-      cluster[id].style.top = `${LAYOUT[id][1]}px`;
-    });
-    world.style.width = `${WORLD_W}px`;
-    world.style.height = `${WORLD_H}px`;
-    buildThread();
-    applyCamera();
-
-    lenis = new Lenis({ lerp: 0.085, smoothWheel: true, wheelMultiplier: 0.9 });
-    const l = lenis;
-    l.on("scroll", ScrollTrigger.update);
-    const tick = (time: number) => l.raf(time * 1000);
-    gsap.ticker.add(tick);
-    gsap.ticker.lagSmoothing(0);
-
-    const tl = gsap.timeline({ paused: true });
-    tl.addLabel("s1").to({}, { duration: 0.7 });
-    (ORDER.slice(1) as Exclude<SceneId, "s1">[]).forEach((id, k) => {
-      const i = k + 1;
-      const c = centerOf(id);
-      tl.addLabel(id)
-        .to(cam, { cx: c.x, cy: c.y, duration: 1.1, ease: SHIFT }, id)
-        .to(cam, { z: 0.6, r: i % 2 ? 0.7 : -0.7, duration: 0.55, ease: SHIFT }, id)
-        .to(cam, { z: 1, r: 0, duration: 0.55, ease: SHIFT }, `${id}+=.55`)
-        .to(segPair(i - 1), { strokeDashoffset: 0, duration: 1.1, ease: "none" }, id);
-      if (id === "s2") tl.to(q("#s1 .night"), { autoAlpha: 0, duration: 0.6, ease: SHIFT }, id);
-      tl.add(beats[id](), `${id}+=.9`).to({}, { duration: 0.45 });
-    });
-    track.style.height = `${Math.round(tl.duration() * 46 + 100)}vh`;
-    master = tl;
-    ScrollTrigger.create({
-      trigger: track,
-      start: "top top",
-      end: "bottom bottom",
-      scrub: 0.6,
-      animation: tl,
-      invalidateOnRefresh: true,
-    });
-
-    return () => {
-      gsap.ticker.remove(tick);
-      gsap.ticker.lagSmoothing(500, 33);
-      l.destroy();
-      lenis = null;
-      master = null;
-      root.classList.remove("cam");
-      ORDER.forEach((id) => {
-        cluster[id].style.left = "";
-        cluster[id].style.top = "";
-      });
-      world.style.transform = world.style.width = world.style.height = "";
-      track.style.height = "";
-      svg.innerHTML = "";
-      segs.length = 0;
-      mode = "flow";
-    };
-  };
-
-  const buildFlow = () => {
-    mode = "flow";
-    root.classList.add("flow");
-    ORDER.slice(1).forEach((id) => {
-      const sub = beats[id as Exclude<SceneId, "s1">]();
-      sub.pause();
-      ScrollTrigger.create({ trigger: cluster[id], start: "top 78%", once: true, onEnter: () => void sub.play() });
-    });
-    // the thread down the left edge draws as you read (clipped: its svg is stretched to the page)
-    gsap.fromTo(q(".mthread"), { clipPath: "inset(0 0 100% 0)" }, {
-      clipPath: "inset(0 0 0% 0)", ease: "none",
-      scrollTrigger: { trigger: root, start: "top top", end: "bottom bottom", scrub: 0.4 },
-    });
-    gsap.to(q("#s1 .night"), { autoAlpha: 0.15, ease: "none", scrollTrigger: { trigger: cluster.s1, start: "top top", end: "bottom top", scrub: true } });
-    return () => {
-      root.classList.remove("flow");
-    };
+  const loosePinFor = (card: HTMLElement, stage: HTMLElement) => {
+    const real = card.querySelector<HTMLElement>(":scope > .pin");
+    const c = document.createElement("i");
+    c.className = `${real?.className ?? "pin"} loose`;
+    stage.appendChild(c);
+    createdNodes.push(c);
+    return { real, c };
   };
 
   const finalStates = () => {
-    root.classList.add("flow", "still");
-    allRopes.forEach((r) => (r.reveal = 1));
+    // reduced motion: show where every story ends, nothing moves
+    [...hr, ...br, tInv, tRes, tAli, tAyse, tHold].forEach((r) => (r.reveal = 1));
+    tHold.taut = tHold.tautTarget = tHold.holdTaut = 1;
+    heldTag.vis = 1;
     setOdo(q("#resAmt"), 200);
-    setOdo(q("#bAmt"), 1080);
-    setOdo(q("#oAmt"), 720);
+    setOdo(q("#aliAmt"), 1080);
+    setOdo(q("#ayseAmt"), 720);
     setOdo(q("#voteOdo"), 2);
-    typed.forEach((e) => (e.textContent = e.dataset.text ?? ""));
-    qa("#sheet .cell").forEach((c) => {
-      c.textContent = c.classList.contains("money") ? Number(c.dataset.b).toLocaleString(lang) : `${c.dataset.b}%`;
-      c.classList.add("edited");
-    });
-    const chip = q("#trust");
-    chip.classList.add("snapped");
-    chip.textContent = chip.dataset.b ?? chip.textContent;
-    qa("#mail .sus").forEach((m) => m.classList.add("on"));
-    const label = q("#lockLabel");
-    label.textContent = label.dataset.b ?? "";
-    q("#lock").classList.add("ready");
-    stats.forEach((el) => renderStat(el, 1));
+    gsap.set(qa(".stamp"), { scale: 1 });
+    gsap.set(q("#needle"), { left: "80%" });
+    q("#ruler").classList.add("at-limit");
+    typeTo(totalChars);
+    gsap.set(qa(".step"), { opacity: 1, x: 0 });
   };
 
-  // nav + scroll hint: jump to a scene (camera mode scrolls to the scene's resting point)
-  qa("[data-go]").forEach((a) => {
-    const go = (e: Event) => {
-      const id = a.dataset.go as SceneId;
-      if (!ORDER.includes(id)) return;
-      e.preventDefault();
-      if (mode === "cam" && master?.scrollTrigger && lenis) {
-        const st = master.scrollTrigger;
-        const tPos = (master.labels[id] ?? 0) + (id === "s1" ? 0 : 1.15);
-        lenis.scrollTo(st.start + (tPos / master.duration()) * (st.end - st.start), { duration: 1.8 });
-      } else cluster[id].scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" });
-    };
-    a.addEventListener("click", go);
-    cleanups.push(() => a.removeEventListener("click", go));
-  });
+  // ── timelines ───────────────────────────────────────────────────────────
+  const buildHero = () => {
+    const tl = gsap.timeline({ delay: 0.15 });
+    tl.from(qa("h1 .ch"), { yPercent: 120, rotation: 8, duration: 0.55, ease: LAND, stagger: 0.016 })
+      .from(q(".eyebrow"), { y: -40, rotation: -12, autoAlpha: 0, duration: 0.45, ease: POP }, "<.1")
+      .from(q(".lede"), { y: 30, rotation: 1.5, autoAlpha: 0, duration: 0.55, ease: LAND }, "<.2")
+      .from(qa(".hero-copy .btn"), { y: 24, autoAlpha: 0, duration: 0.45, ease: POP, stagger: 0.08 }, "<.1");
+    ["#mAli", "#mAyse", "#mMeh", "#jWeb", "#jApi"].forEach((s, i) => tl.add(slam(q(s), { y: -380 - i * 30 }), 0.35 + i * 0.11));
+    tl.to(hr, { reveal: 1, duration: 0.7, ease: LAND, stagger: 0.12 }, ">-.2");
+    if (matchMedia("(min-width:761px)").matches) {
+      const st = { trigger: q("#hero"), start: "top top", end: "bottom top", scrub: true };
+      gsap.to(qa(".hc"), { yPercent: -90, ease: "none", scrollTrigger: st });
+      gsap.to(q(".hero-copy"), { yPercent: -30, ease: "none", scrollTrigger: { ...st } });
+    }
+  };
 
-  // trust chip text for both states
-  const chip = q("#trust");
-  chip.dataset.a = chip.textContent ?? "";
-  chip.dataset.b = document.documentElement.lang === "tr" ? "güven · koptu" : "trust · snapped";
+  const buildBut = (pinned: boolean) => {
+    const trigger = q("#but");
+    const st = pinned
+      ? { trigger, start: "top top", end: "+=210%", pin: true, scrub: 0.5, invalidateOnRefresh: true }
+      : { trigger, start: "top 75%", end: "bottom 30%", scrub: 0.5, invalidateOnRefresh: true };
+    const tl = gsap.timeline({ scrollTrigger: st });
+    const sheet = q("#sheet");
+    const halves = [q("#sheet .half.l"), q("#sheet .half.r")];
+    tl.add(slam(sheet, { y: -520, rot: -20, dur: 0.6 }))
+      .fromTo(q(".but-title"), { yPercent: 70, autoAlpha: 0 }, { yPercent: 0, autoAlpha: 1, duration: 0.6, ease: LAND }, "-=.3")
+      .add(slam(q("#stA"), { y: -260, x: -120, rot: -24 }), "+=.05")
+      .to(br[0], { reveal: 1, duration: 0.4, ease: LAND }, "<.3")
+      .add(slam(q("#stB"), { y: -260, x: 140, rot: 20 }), "<.1")
+      .to(br[1], { reveal: 1, duration: 0.4, ease: LAND }, "<.3")
+      .add(slam(q("#stC"), { y: 200, x: 160, rot: -16 }), "<.1")
+      .to(br[2], { reveal: 1, duration: 0.4, ease: LAND }, "<.3")
+      // pressure builds: the complaints pull their threads tight, the sheet trembles
+      .to(br, { taut: 1, tautTarget: 1, duration: 0.6, ease: SHIFT }, "+=.25")
+      .to(sheet, { keyframes: { rotation: [-1.5, -3, 0, -2.5, 0.5, -2], x: [0, -4, 5, -3, 4, 0] }, duration: 0.6, ease: "none" }, "<")
+      // the tear
+      .addLabel("tear")
+      .to(q("#sheetPin"), {
+        keyframes: [
+          { y: -200, x: 150, rotation: 320, duration: 0.3, ease: LAND },
+          { y: 900, x: 330, rotation: 900, duration: 0.6, ease: LEAVE },
+        ],
+      }, "tear")
+      .add(toggle((on) => {
+        br.forEach((r) => r.setFree(on));
+        sheet.classList.toggle("torn", on);
+      }), "tear")
+      .to(halves[0], { x: -60, y: 20, rotation: -11, transformOrigin: "0% 0%", duration: 0.35, ease: LAND }, "tear")
+      .to(halves[1], { x: 70, y: 10, rotation: 13, transformOrigin: "100% 0%", duration: 0.35, ease: LAND }, "tear")
+      .to(halves[0], { y: 900, rotation: -32, duration: 0.7, ease: LEAVE }, "tear+=.35")
+      .to(halves[1], { y: 900, rotation: 41, duration: 0.75, ease: LEAVE }, "tear+=.4")
+      // paper flutters off the board
+      .to(q("#stA"), { keyframes: [
+        { x: -40, y: -50, rotation: -22, duration: 0.22, ease: LAND },
+        { x: -90, y: 150, rotation: 8, duration: 0.3, ease: SHIFT },
+        { x: -130, y: 820, rotation: -36, duration: 0.5, ease: LEAVE },
+      ] }, "tear+=.12")
+      .to(q("#stB"), { keyframes: [
+        { x: 50, y: -60, rotation: 22, duration: 0.22, ease: LAND },
+        { x: 110, y: 140, rotation: -6, duration: 0.3, ease: SHIFT },
+        { x: 170, y: 900, rotation: 44, duration: 0.5, ease: LEAVE },
+      ] }, "tear+=.2")
+      .to(q("#stC"), { keyframes: [
+        { x: 40, y: -40, rotation: -18, duration: 0.22, ease: LAND },
+        { x: 80, y: 120, rotation: 12, duration: 0.3, ease: SHIFT },
+        { x: 110, y: 700, rotation: -30, duration: 0.5, ease: LEAVE },
+      ] }, "tear+=.28")
+      .to({}, { duration: 0.5 });
+  };
 
-  // ── wire everything ────────────────────────────────────────────────────
+  const buildSo = (pinned: boolean) => {
+    const trigger = q("#so");
+    const st = pinned
+      ? { trigger, start: "top top", end: "+=300%", pin: true, scrub: 0.5, invalidateOnRefresh: true }
+      : { trigger, start: "top 70%", end: "bottom 40%", scrub: 0.5, invalidateOnRefresh: true };
+    const tl = gsap.timeline({ scrollTrigger: st });
+    const step = (i: number) => gsap.to(q(`.step:nth-child(${i})`), { opacity: 1, x: 0, duration: 0.35, ease: LAND });
+    const flag = (s: string) => gsap.fromTo(q(s), { y: -70, rotation: -14, autoAlpha: 0 }, { y: 0, rotation: 0, autoAlpha: 1, duration: 0.4, ease: POP });
+    const recv = (el: HTMLElement, rope: Rope) =>
+      gsap.timeline().to(el, { scale: 1.06, duration: 0.08, ease: SHIFT }).to(el, { scale: 1, duration: 0.4, ease: POP }).add(() => rope.pluck(8), 0);
+    const flow = (bead: Bead, dur: number) =>
+      value(0, 1, dur, SHIFT, (t) => {
+        bead.t = t;
+        bead.on = t > 0 && t < 1;
+      });
+    const burst = q("#burst");
+    tl.fromTo(q(".so-title"), { yPercent: 60, autoAlpha: 0 }, { yPercent: 0, autoAlpha: 1, duration: 0.5, ease: LAND })
+      .add(slam(q("#inv"), { y: -320, rot: -18 }), "<.15")
+      .add(step(1), "<.25")
+      .add(flag("#fl1"), "<")
+      .add(slam(q("#soJob"), { x: -280, y: -40, rot: 12 }))
+      .to(tInv, { reveal: 1, duration: 0.45, ease: LAND }, "<.25")
+      .add(flow(bInv, 1.1))
+      .add(step(2), "<.6")
+      .add(recv(q("#soJob"), tInv), ">-.02")
+      // the node flashes and the payment splits by its shares
+      .fromTo(burst, { autoAlpha: 1, scale: 0.2 }, {
+        scale: 1.6, autoAlpha: 0, duration: 0.5, ease: LAND,
+        onStart: () => {
+          S.so.rect = S.so.stage.getBoundingClientRect();
+          const p = stagePoint(q("#soJob"), S.so);
+          gsap.set(burst, { x: p.x, y: p.y });
+        },
+      }, "<")
+      .add(slam(q("#res"), { y: -280, rot: 14 }), "<.05")
+      .to(tRes, { reveal: 1, duration: 0.4, ease: LAND }, "<.2")
+      .add(flow(bRes, 0.8))
+      .add(recv(q("#res"), tRes))
+      .add(value(0, 200, 0.5, LAND, (v) => setOdo(q("#resAmt"), v)), "<")
+      .add(step(3), "<")
+      .add(flag("#fl2"), "<")
+      .add(slam(q("#pAli"), { y: 300, rot: -16 }), ">-.1")
+      .add(slam(q("#pAyse"), { y: 320, rot: 16 }), "<.1")
+      .to([tAli, tAyse], { reveal: 1, duration: 0.45, ease: LAND, stagger: 0.08 }, "<.2")
+      .addLabel("split")
+      .add(flow(bAli, 1), "split")
+      .add(flow(bAyse, 1.15), "split")
+      .add(step(4), "split+=.4")
+      .add(recv(q("#pAli"), tAli), "split+=1")
+      .add(recv(q("#pAyse"), tAyse), "split+=1.15")
+      .add(value(0, 1080, 0.7, LAND, (v) => setOdo(q("#aliAmt"), v)), "split+=1")
+      .add(value(0, 720, 0.7, LAND, (v) => setOdo(q("#ayseAmt"), v)), "split+=1.15")
+      .add(flag("#fl3"), "split+=1.2")
+      .to([q("#pAli"), q("#pAyse")], {
+        boxShadow: "0 0 0 3px #ffe08a, 0 0 40px 8px rgba(255,214,110,.7), 0 14px 28px -8px rgba(40,20,5,.45)",
+        duration: 0.3, ease: LAND, stagger: 0.1,
+      }, "split+=1.2")
+      .to(q(".ptape .now"), { left: "30%", duration: 0.6, ease: SHIFT }, "split+=1.2")
+      // hold so the counters sit on their final values well before the pin releases
+      .to({}, { duration: 0.9 });
+  };
+
+  const buildRules = (pinned: boolean) => {
+    const trigger = q("#rules");
+    const st = pinned
+      ? { trigger, start: "top top", end: "+=320%", pin: true, scrub: 0.5, invalidateOnRefresh: true }
+      : { trigger, start: "top 70%", end: "bottom 35%", scrub: 0.5, invalidateOnRefresh: true };
+    const tl = gsap.timeline({ scrollTrigger: st });
+    const ballot = q("#ballot");
+    tl.fromTo(q(".rules-title"), { yPercent: 50, autoAlpha: 0 }, { yPercent: 0, autoAlpha: 1, duration: 0.5, ease: LAND })
+      .add(slam(ballot, { x: -420, y: -60, rot: -16 }), "<.2");
+    // YES stamps: ink splashes, stamp lands with overshoot, the tally rolls
+    qa(".vote").slice(0, 2).forEach((v, i) => {
+      const splat = v.querySelector(".splat");
+      const stamp = v.querySelector(".stamp");
+      if (!splat || !stamp) return;
+      tl.fromTo(splat, { scale: 0.2, autoAlpha: 0 }, { scale: 1.25, autoAlpha: 1, duration: 0.18, ease: LAND }, `stamp${i}`)
+        .to(splat, { scale: 1.05, autoAlpha: 0.55, duration: 0.3, ease: LAND }, `stamp${i}+=.18`)
+        .fromTo(stamp, { scale: 2.2, rotation: -30 }, { scale: 1, rotation: -14, duration: 0.28, ease: POP }, `stamp${i}+=.04`)
+        .to(ballot, { y: 3, duration: 0.05, ease: SHIFT }, `stamp${i}+=.08`)
+        .to(ballot, { y: 0, duration: 0.2, ease: POP })
+        .add(value(i, i + 1, 0.25, LAND, (n) => setOdo(q("#voteOdo"), n)), `stamp${i}+=.1`);
+      if (i < 1) tl.addLabel(`stamp${i + 1}`, `stamp${i}+=.32`);
+    });
+    const ruler = q("#ruler");
+    tl.add(slam(q("#agent"), { y: -400, rot: 18 }), ">+.1")
+      .add(slam(q("#sender"), { x: 300, y: -80, rot: 24 }), "<.15")
+      .to(tHold, { reveal: 1, duration: 0.5, ease: LAND }, "<.25")
+      // the agent holds: the thread snaps taut and trembles, a tag swings from it
+      .addLabel("hold")
+      .to(tHold, { taut: 1, tautTarget: 1, holdTaut: 1, duration: 0.35, ease: SHIFT }, "hold")
+      .add(value(0, 1, 0.35, "none", (j) => (tHold.jitter = j * 1.6)), "hold")
+      .to(heldTag, { vis: 1, duration: 0.3, ease: POP }, "hold+=.15")
+      .add(() => {
+        heldTag.va += 4;
+      }, "hold+=.2")
+      .add(slam(ruler, { y: 300, rot: -8 }), "hold+=.3")
+      .to(q("#needle"), { left: "86%", duration: 0.9, ease: SHIFT })
+      .to(q("#needle"), { left: "80%", duration: 0.3, ease: POP })
+      .add(toggle((on) => ruler.classList.toggle("at-limit", on)), ">")
+      .add(slam(q("#receipt"), { y: 260, rot: 6 }), "<")
+      .add(value(0, totalChars, 1.6, "none", typeTo), ">-.1");
+    if (pinned) {
+      // month end: pins pop and roll, the board empties
+      const cards = ["#ballot", "#agent", "#sender", "#ruler", "#receipt"].map((s) => q(s));
+      const stage = S.rules.stage;
+      tl.addLabel("clear", "+=1.4")
+        .to(tHold, { taut: 0, tautTarget: 0, holdTaut: 0, duration: 0.2, ease: LAND }, "clear")
+        .add(value(1, 0, 0.2, "none", (j) => (tHold.jitter = j * 1.6)), "clear")
+        .to(heldTag, { vis: 0, duration: 0.2, ease: LEAVE }, "clear")
+        .add(toggle((on) => tHold.setFree(on)), "clear+=.15");
+      cards.forEach((card, i) => {
+        const { real, c } = loosePinFor(card, stage);
+        const dx = (i % 2 ? 1 : -1) * gsap.utils.random(80, 180);
+        let p0: Point = { x: 0, y: 0 };
+        const at = `clear+=${0.08 * i}`;
+        tl.set(c, {
+          x: () => {
+            S.rules.rect = stage.getBoundingClientRect();
+            p0 = stagePoint(card, S.rules);
+            return p0.x - 9;
+          },
+          y: () => p0.y - 9,
+          autoAlpha: 1,
+          rotation: 0,
+        }, at);
+        if (real) tl.set(real, { autoAlpha: 0 }, at);
+        tl.to(c, { y: "-=70", x: `+=${dx * 0.25}`, rotation: 140, duration: 0.18, ease: LAND }, at)
+          .to(c, { y: () => stage.clientHeight - 26, x: `+=${dx * 0.45}`, rotation: "+=320", duration: 0.42, ease: LEAVE })
+          .to(c, { y: "-=38", x: `+=${dx * 0.15}`, rotation: "+=120", duration: 0.14, ease: LAND })
+          .to(c, { y: "+=38", x: `+=${dx * 0.15}`, rotation: "+=120", duration: 0.14, ease: LEAVE })
+          .to(c, { x: `+=${dx * 0.6}`, rotation: "+=300", duration: 0.4, ease: LAND })
+          .to(card, {
+            y: () => stage.clientHeight + 260,
+            rotation: `+=${(i % 2 ? 1 : -1) * gsap.utils.random(18, 40)}`,
+            duration: 0.6,
+            ease: LEAVE,
+          }, `${at}+=.12`);
+      });
+      tl.to(q(".rules-title"), { y: -500, autoAlpha: 0, duration: 0.5, ease: LEAVE }, "clear+=.3").to({}, { duration: 0.3 });
+    }
+  };
+
+  const buildClose = () => {
+    const tl = gsap.timeline({ paused: true });
+    tl.add(slam(q("#closeCard"), { y: 260, rot: -10, dur: 0.6 })).add(slam(q("#periodCard"), { y: -260, x: 160, rot: 32 }), "-=.15");
+    ScrollTrigger.create({ trigger: q("#start"), start: "top 70%", once: true, onEnter: () => void tl.play() });
+  };
+
+  // ── wire it all inside one context so a single revert undoes every tween ──
   const mm = gsap.matchMedia();
   const ctx = gsap.context(() => {
     qa(".card").forEach((c) => gsap.set(c, { rotation: baseRot(c) }));
     ScrollTrigger.create({ start: 0, end: "max", onUpdate: (s) => (scrollV = s.getVelocity()) });
 
+    // card hover pulls its threads taut (desktop pointer)
     qa(".card.lift").forEach((c) => {
-      const enter = () => (ropesOf.get(c) ?? []).forEach((r) => (r.tautTarget = Math.max(r.tautTarget, 0.6)));
+      const enter = () => (ropesOf.get(c) ?? []).forEach((r) => (r.tautTarget = Math.max(r.tautTarget, 0.65)));
       const leave = () => (ropesOf.get(c) ?? []).forEach((r) => (r.tautTarget = r.holdTaut || 0));
       c.addEventListener("pointerenter", enter);
       c.addEventListener("pointerleave", leave);
@@ -636,19 +497,27 @@ export function initLanding(root: HTMLElement): () => void {
         c.removeEventListener("pointerleave", leave);
       });
     });
+
     if (matchMedia("(hover:hover) and (pointer:fine)").matches && !REDUCED) cleanups.push(setupCursor(q(".cursor")));
 
     if (REDUCED) {
+      qa(".card").forEach((c) => gsap.set(c, { autoAlpha: 1 }));
       finalStates();
-      return;
+    } else {
+      buildHero();
+      mm.add("(min-width:761px)", () => {
+        buildBut(true);
+        buildSo(true);
+        buildRules(true);
+      });
+      mm.add("(max-width:760px)", () => {
+        buildBut(false);
+        buildSo(false);
+        buildRules(false);
+      });
+      buildClose();
     }
-    buildIntro();
   }, root);
-
-  if (!REDUCED) {
-    mm.add("(min-width:761px)", () => buildCamera());
-    mm.add("(max-width:760px)", () => buildFlow());
-  }
 
   raf = requestAnimationFrame(frame);
   const refresh = () => {
@@ -657,13 +526,15 @@ export function initLanding(root: HTMLElement): () => void {
   window.addEventListener("load", refresh);
   cleanups.push(() => window.removeEventListener("load", refresh));
   void document.fonts?.ready.then(refresh);
+  requestAnimationFrame(refresh);
 
   if (import.meta.env.DEV) {
-    (window as unknown as { __keyarc?: unknown }).__keyarc = {
-      cam, intro, world, segs, scenes, beads, trustRope, getOdo,
-      odo: (sel: string) => getOdo(q(sel)),
-      mode: () => mode,
-      master: () => master,
+    (window as unknown as { __orta?: unknown }).__orta = {
+      scenes,
+      ropes: { hero: hr, but: br, so: [tInv, tRes, tAli, tAyse], rules: [tHold] },
+      beads: { bInv, bRes, bAli, bAyse },
+      heldTag,
+      setOdo,
     };
   }
 
@@ -674,15 +545,12 @@ export function initLanding(root: HTMLElement): () => void {
     ctx.revert();
     cleanups.forEach((fn) => fn());
     beads.forEach((b) => b.remove());
+    createdNodes.forEach((n) => n.remove());
     odos.forEach(clearOdo);
-    typed.forEach((e) => (e.textContent = ""));
-    stats.forEach((e) => {
-      delete e.dataset.p;
-      e.textContent = "—";
-    });
-    kinLines.forEach((l, i) => (l.innerHTML = kinHtml[i]));
-    root.classList.remove("flow", "still", "cam");
-    trustChip.style.transform = "";
-    if (import.meta.env.DEV) delete (window as unknown as { __keyarc?: unknown }).__keyarc;
+    lines.forEach((l) => (l.innerHTML = ""));
+    ptapeTicks.innerHTML = "";
+    ptapeDays.innerHTML = "";
+    headlineSpans.forEach((s, i) => (s.innerHTML = headlineHtml[i]));
+    if (import.meta.env.DEV) delete (window as unknown as { __orta?: unknown }).__orta;
   };
 }

@@ -10,16 +10,13 @@ export type Scene = {
   beads: Bead[];
   active: boolean;
   rect: DOMRect;
-  /** Screen px per stage px: the camera scales the whole board, the canvas draws in stage px. */
-  scale: number;
 };
 
 /** Centre of an element's pin (or of the element itself) in stage coordinates. */
 export function stagePoint(el: Element, sc: Scene): Point {
   const target = el.classList.contains("pin") ? el : el.querySelector(":scope > .pin") ?? el;
   const p = target.getBoundingClientRect();
-  const k = sc.scale || 1;
-  return { x: (p.left + p.width / 2 - sc.rect.left) / k, y: (p.top + p.height / 2 - sc.rect.top) / k };
+  return { x: p.left + p.width / 2 - sc.rect.left, y: p.top + p.height / 2 - sc.rect.top };
 }
 
 type RopePoint = { x: number; y: number; px: number; py: number };
