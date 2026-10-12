@@ -6,6 +6,7 @@ import { saveDecision, seal, type Check } from "./log";
 
 const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const CHUNK = 900n; // smallest eth_getLogs range the relay providers accept
+const CURSOR_SLACK = CHUNK * 3n; // ~1h of Arc blocks
 /** Arc emits native USDC movements (e.g. CCTP mints) from a system address as well as from the ERC-20 interface. */
 const SYSTEM_EMITTER: Address = "0xfffffffffffffffffffffffffffffffffffffffe";
 /** A fast CCTP transfer arrives slightly above the invoice when the payer covered the fee; the excess stays unlabelled. */
@@ -40,6 +41,7 @@ export async function findInflows(env: Env, chest: Address): Promise<Inflow[]> {
   let from = saved ? BigInt(saved) + 1n : head - CHUNK * 4n; // first run: look back ~1.5h
   const found: Inflow[] = [];
   const stats = await getStats(env, chest);
+  const statsBefore = JSON.stringify(stats);
   while (from <= head) {
     const to = from + CHUNK > head ? head : from + CHUNK;
     const [transfers, events] = await Promise.all([
@@ -59,8 +61,12 @@ export async function findInflows(env: Env, chest: Address): Promise<Inflow[]> {
     }
     from = to + 1n;
   }
-  await env.AGENT_KV.put(cursorKey(chest), head.toString());
-  await env.AGENT_KV.put(statsKey(chest), JSON.stringify(stats));
+  // Free-plan KV allows 1,000 writes a day and this runs every 5 minutes, so write only what changed.
+  // A quiet cursor is kept for up to ~1h of blocks: re-scanning a few chunks costs reads, not writes.
+  const statsNow = JSON.stringify(stats);
+  const quiet = found.length === 0 && statsNow === statsBefore;
+  if (!quiet || !saved || head - BigInt(saved) > CURSOR_SLACK) await env.AGENT_KV.put(cursorKey(chest), head.toString());
+  if (statsNow !== statsBefore) await env.AGENT_KV.put(statsKey(chest), statsNow);
   const pending = JSON.parse((await env.AGENT_KV.get(pendingKey(chest))) ?? "[]") as { tx: Hex; from: Address; amount: string; block: string; seen?: number }[];
   const known = new Set(pending.map((p) => p.tx));
   return [
@@ -70,7 +76,9 @@ export async function findInflows(env: Env, chest: Address): Promise<Inflow[]> {
 }
 
 async function savePending(env: Env, chest: Address, list: Inflow[]) {
-  await env.AGENT_KV.put(pendingKey(chest), JSON.stringify(list.map((i) => ({ ...i, amount: i.amount.toString(), block: i.block.toString() }))));
+  const next = JSON.stringify(list.map((i) => ({ ...i, amount: i.amount.toString(), block: i.block.toString() })));
+  if (next === ((await env.AGENT_KV.get(pendingKey(chest))) ?? "[]")) return;
+  await env.AGENT_KV.put(pendingKey(chest), next);
 }
 
 async function openInvoices(chest: Address): Promise<OpenInvoice[]> {
