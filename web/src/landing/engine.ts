@@ -92,17 +92,21 @@ export function initLanding(root: HTMLElement): () => void {
   };
 
   const hr = [
+    new Rope(S.hero, q("#cWeb"), q("#jWeb"), { slack: 1.1 }),
+    new Rope(S.hero, q("#cApi"), q("#jApi"), { slack: 1.1 }),
     new Rope(S.hero, q("#jWeb"), q("#mAli"), { slack: 1.12 }),
     new Rope(S.hero, q("#jWeb"), q("#mAyse"), { slack: 1.14 }),
     new Rope(S.hero, q("#jApi"), q("#mMeh"), { slack: 1.1 }),
     new Rope(S.hero, q("#jApi"), q("#mAyse"), { slack: 1.08 }),
     new Rope(S.hero, q("#jApi"), q("#mAli"), { slack: 1.06 }),
   ];
-  attach(q("#jWeb"), hr[0]); attach(q("#mAli"), hr[0]);
-  attach(q("#jWeb"), hr[1]); attach(q("#mAyse"), hr[1]);
-  attach(q("#jApi"), hr[2]); attach(q("#mMeh"), hr[2]);
-  attach(q("#jApi"), hr[3]); attach(q("#mAyse"), hr[3]);
-  attach(q("#jApi"), hr[4]); attach(q("#mAli"), hr[4]);
+  ([
+    ["#cWeb", "#jWeb"], ["#cApi", "#jApi"], ["#jWeb", "#mAli"], ["#jWeb", "#mAyse"],
+    ["#jApi", "#mMeh"], ["#jApi", "#mAyse"], ["#jApi", "#mAli"],
+  ] as const).forEach(([a, b], i) => {
+    attach(q(a), hr[i]);
+    attach(q(b), hr[i]);
+  });
 
   const br = [
     new Rope(S.but, q("#stA"), q("#sheetPin"), { slack: 1.06 }),
@@ -123,7 +127,9 @@ export function initLanding(root: HTMLElement): () => void {
   const bRes = new Bead(S.so, tRes, 4.2, q("#res").dataset.bead ?? "");
   const bAli = new Bead(S.so, tAli, 7.6, q("#pAli").dataset.bead ?? "");
   const bAyse = new Bead(S.so, tAyse, 6.2, q("#pAyse").dataset.bead ?? "");
-  const beads = [bInv, bRes, bAli, bAyse];
+  // hero: the monthly client's payment keeps travelling down its thread to the job
+  const bHero = new Bead(S.hero, hr[0], 6.5, q("#cWeb").dataset.bead ?? "");
+  const beads = [bInv, bRes, bAli, bAyse, bHero];
 
   const tHold = new Rope(S.rules, q("#sender"), q("#agent"), { slack: 1.16 });
   attach(q("#sender"), tHold);
@@ -319,8 +325,18 @@ export function initLanding(root: HTMLElement): () => void {
       .from(q(".eyebrow"), { y: -40, rotation: -12, autoAlpha: 0, duration: 0.45, ease: POP }, "<.1")
       .from(q(".lede"), { y: 30, rotation: 1.5, autoAlpha: 0, duration: 0.55, ease: LAND }, "<.2")
       .from(qa(".hero-copy .btn"), { y: 24, autoAlpha: 0, duration: 0.45, ease: POP, stagger: 0.08 }, "<.1");
-    ["#mAli", "#mAyse", "#mMeh", "#jWeb", "#jApi"].forEach((s, i) => tl.add(slam(q(s), { y: -380 - i * 30 }), 0.35 + i * 0.11));
+    ["#cWeb", "#cApi", "#jWeb", "#jApi", "#mAli", "#mAyse", "#mMeh"].forEach((s, i) => tl.add(slam(q(s), { y: -380 - i * 24 }), 0.3 + i * 0.1));
     tl.to(hr, { reveal: 1, duration: 0.7, ease: LAND, stagger: 0.12 }, ">-.2");
+    // once the board is up, the client's payment runs down to the job, the job card takes it, again
+    const pay = gsap.timeline({ repeat: -1, repeatDelay: 1.6, paused: true });
+    pay.add(value(0, 1, 1.3, SHIFT, (v) => {
+      bHero.t = v;
+      bHero.on = v > 0 && v < 1;
+    }))
+      .to(q("#jWeb"), { scale: 1.05, duration: 0.08, ease: SHIFT })
+      .to(q("#jWeb"), { scale: 1, duration: 0.4, ease: POP })
+      .add(() => hr[0].pluck(7), "<");
+    tl.add(() => void pay.play(), ">-.3");
     if (matchMedia("(min-width:761px)").matches) {
       // depth parallax: nearer cards (higher data-depth) leave faster and drift apart a little
       const st = { trigger: q("#hero"), start: "top top", end: "bottom top", scrub: 0.6 };

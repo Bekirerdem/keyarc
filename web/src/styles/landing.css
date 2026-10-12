@@ -339,3 +339,21 @@ body.landing-body #root{width:auto;max-width:none;margin:0;text-align:left;borde
 .landing .member{width:172px}
 .landing .job{width:252px}
 @media (max-width:760px){.landing .member,.landing .job{width:auto}}
+
+/* hero v3: client → job → people; headline says what the product does */
+.landing .hero-copy{top:17vh}
+.landing h1{font-size:clamp(48px,5.3vw,96px)}
+.landing:lang(tr) h1{font-size:clamp(46px,5vw,90px)}
+.landing .lede{max-width:520px;font-size:18px}
+.landing .client{width:236px;padding:16px 18px 14px}
+.landing .client .cname{font-family:var(--f-display);font-weight:800;font-size:24px;letter-spacing:-.02em;margin:4px 0 10px}
+.landing .client .paylink{display:inline-block;font-family:var(--f-mono);font-size:12px;font-weight:600;padding:5px 9px;background:var(--glow);color:var(--ink);
+  box-shadow:0 2px 0 #b8922f}
+@media (max-width:760px){
+  .landing #heroStage .client{grid-column:span 3;padding:12px 12px 10px}
+  .landing #heroStage .client .cname{font-size:18px}
+  .landing h1{font-size:44px}
+  .landing:lang(tr) h1{font-size:40px}
+}
+.landing .hero-copy{width:min(52vw,880px)}
+@media (max-width:760px){.landing .hero-copy{width:auto;top:auto}}
