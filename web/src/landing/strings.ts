@@ -1,9 +1,10 @@
 import { defineStrings } from "../lib/i18n";
 
 /** Every user-facing landing string, English + Turkish.
- *  One story: a team bills clients together → today the money lands in one person's wallet →
- *  so the client pays the chest instead → reserve first, the rest by the work, in each member's currency →
- *  an agent collects inside limits the contract sets. */
+ *  One story, one team: Deniz (İstanbul), Lena (Berlin) and Marco (Lisbon) bill two clients together →
+ *  today every payment lands in Deniz's wallet and he pays the others by hand →
+ *  so the client pays the team chest instead → reserve first, the rest by the work →
+ *  an agent matches payments inside limits the contract sets. */
 export const L = defineStrings({
   "l.tagline": ["your team's payment link, on Arc", "ekibin tahsilat linki, Arc'ta"],
   "l.nav.why": ["Why", "Neden"],
@@ -16,27 +17,33 @@ export const L = defineStrings({
   "l.hero.l2": ["Split by", "Emeğe göre"],
   "l.hero.l3": ["the work.", "bölüş."],
   "l.hero.lede": [
-    "Send the client one payment link. The money lands in your team's chest on Arc, a reserve goes aside first, and everyone is paid their share of the work, in the currency they choose.",
-    "Müşteriye tek bir ödeme linki gönder. Para Arc'taki ekip kasasına düşer, önce yedek ayrılır, kalanı herkese emeği kadar, seçtiği para biriminde ödenir.",
+    "Send the client one payment link. The money lands in your team's chest on Arc, a reserve goes aside first, and everyone is paid their share of the work, wherever they are.",
+    "Müşteriye tek bir ödeme linki gönder. Para Arc'taki ekip kasasına düşer, önce yedek ayrılır, kalanı herkese emeği kadar ödenir, kim nerede olursa olsun.",
   ],
   "l.hero.start": ["Send your first invoice", "İlk faturanı gönder"],
   "l.hero.see": ["See how it works", "Nasıl çalıştığını gör"],
-  "l.role.frontend": ["frontend", "ön yüz"],
-  "l.role.design": ["design", "tasarım"],
-  "l.role.contracts": ["contracts", "kontratlar"],
-  "l.job.berlin": ["Monthly client · October", "Aylık müşteri · Ekim"],
+  "l.role.dev": ["developer · İstanbul", "yazılım · İstanbul"],
+  "l.role.design": ["designer · Berlin", "tasarım · Berlin"],
+  "l.role.copy": ["copy & SEO · Lisbon", "metin & SEO · Lizbon"],
+  "l.job.retainer": ["Coffee chain · every month", "Kahve zinciri · her ay"],
   "l.job.web": ["Website + upkeep", "Web sitesi + bakım"],
-  "l.job.agents": ["Sold to agents · x402", "Ajanlara satış · x402"],
-  "l.job.api": ["Invoice parser API", "Fatura okuma API'si"],
+  "l.job.retainerAmt": ["2,000 USDC / month", "2.000 USDC / ay"],
+  "l.job.oneoff": ["Fintech startup · one-off", "Fintech girişimi · tek sefer"],
+  "l.job.launch": ["Launch landing page", "Lansman sayfası"],
+  "l.job.oneoffAmt": ["3,600 USDC", "3.600 USDC"],
 
   // 2 · the problem: one person collects for everyone
   "l.but.note1": ["“When do I get my share?”", "“Payım ne zaman gelecek?”"],
+  "l.but.sig1": ["Marco", "Marco"],
   "l.but.note2": ["“I asked for euros. You sent USDC.”", "“Ben euro istemiştim, sen USDC göndermişsin.”"],
-  "l.but.note3": ["Ran out of cash in August. Nothing set aside.", "Ağustosta nakit bitti. Kenara hiçbir şey ayrılmamıştı."],
-  "l.sheet.file": ["Bekir's wallet · 0x39AE…5794", "Bekir'in cüzdanı · 0x39AE…5794"],
-  "l.sheet.edited": ["in: 2,000 USDC", "gelen: 2.000 USDC"],
+  "l.but.sig2": ["Lena", "Lena"],
+  "l.but.note3": ["Ran out of cash in August. Nothing was set aside.", "Ağustosta nakit bitti. Kenara hiçbir şey ayrılmamıştı."],
+  "l.sheet.file": ["Deniz's wallet · 0x7c1F…a9E2", "Deniz'in cüzdanı · 0x7c1F…a9E2"],
+  "l.sheet.edited": ["October in: 5,600 USDC", "Ekim'de gelen: 5.600 USDC"],
   "l.sheet.owe": ["owed", "borç"],
-  "l.sheet.notSent": ["not sent ?", "gönderilmedi ?"],
+  "l.sheet.lenaOwed": ["2,600", "2.600"],
+  "l.sheet.marcoOwed": ["1,080", "1.080"],
+  "l.sheet.partial": ["sent 1,000 · rest ?", "1.000 gitti · kalanı ?"],
   "l.sheet.which": ["which network?", "hangi ağ?"],
   "l.sheet.reserve": ["reserve", "yedek"],
   "l.sheet.forgot": ["forgot", "unutuldu"],
@@ -47,15 +54,15 @@ export const L = defineStrings({
   // 3 · the chest
   "l.so.title": ["So the client pays the team's chest.", "Bu yüzden müşteri ekibin kasasına öder."],
   "l.so.invoice": ["Invoice #014 · paid from Base", "Fatura #014 · Base'den ödendi"],
-  "l.so.client": ["Monthly client", "Aylık müşteri"],
+  "l.so.client": ["Coffee chain · October", "Kahve zinciri · Ekim"],
   "l.so.amount": ["2,000 USDC", "2.000 USDC"],
   "l.rules.senderAmt": ["5,000 USDC", "5.000 USDC"],
   "l.so.matched": ["Matched to", "Eşleştiği iş"],
-  "l.so.reserve": ["Reserve · first", "Yedek · önce"],
-  "l.so.step1": ["The client pays one link, from any chain", "Müşteri tek linkten öder, hangi zincirden olursa"],
+  "l.so.reserve": ["Reserve · 10% first", "Yedek · önce %10"],
+  "l.so.step1": ["The client pays one link, from Arc or Base", "Müşteri tek linkten öder, Arc'tan ya da Base'den"],
   "l.so.step2": ["Pinned to the job that earned it", "Onu kazandıran işe iğnelenir"],
   "l.so.step3": ["Reserve goes aside first", "Önce yedek ayrılır"],
-  "l.so.step4": ["The rest, by the work, in each person's currency", "Kalanı emeğe göre, herkesin kendi para biriminde"],
+  "l.so.step4": ["The rest, by the shares on the invoice", "Kalanı faturadaki paylara göre"],
   "l.so.period": ["Period 10 · October", "10. dönem · Ekim"],
   "l.so.day": ["day 02 · ", "2. gün · "],
   "l.so.flag1.n": ["+2,000", "+2.000"],
@@ -63,12 +70,17 @@ export const L = defineStrings({
   "l.so.flag2": [" to reserve", " yedeğe"],
   "l.so.flag3.n": ["1,800", "1.800"],
   "l.so.flag3": [" split 60 / 40", " 60 / 40 bölündü"],
-  "l.so.payA": ["takes USDC · cashes out to lira", "USDC alır · TL'ye çevirir"],
-  "l.so.payB": ["converts to EURC", "EURC'ye çevirir"],
+  "l.so.payA": ["keeps USDC · cashes out to lira", "USDC tutar · TL'ye bozdurur"],
+  "l.so.payB": ["converts to EURC on Arc", "Arc'ta EURC'ye çevirir"],
+  "l.bead.inv": ["2,000 USDC", "2.000 USDC"],
+  "l.bead.res": ["200 · reserve", "200 · yedek"],
+  "l.bead.a": ["1,080 · Deniz", "1.080 · Deniz"],
+  "l.bead.b": ["720 · Lena", "720 · Lena"],
 
-  // 4 · rules + the collecting agent
-  "l.rules.title": ["Rules change by vote. The agent collects inside them.", "Kurallar oyla değişir. Ajan tahsilatı o kuralların içinde yapar."],
-  "l.rules.proposal": ["Proposal 07 · needs 2 of 3", "Öneri 07 · 3 oydan 2'si gerekli"],
+  // 4 · rules + the agent
+  "l.rules.title": ["Rules change by vote. The agent works inside them.", "Kurallar oyla değişir. Ajan o kuralların içinde çalışır."],
+  "l.rules.proposal": ["Proposal 07 · the agent suggested it", "Öneri 07 · ajan önerdi"],
+  "l.rules.needs": ["needs 2 of 3", "3 oydan 2'si gerekli"],
   "l.rules.reserve3": ["Keep three months of costs in reserve", "Üç aylık gideri yedekte tut"],
   "l.rules.yes": ["YES", "EVET"],
   "l.rules.unknown": ["Unknown sender", "Tanınmayan gönderen"],
@@ -80,9 +92,9 @@ export const L = defineStrings({
   "l.rules.held": ["HELD", "BEKLEMEDE"],
   "l.rules.ruler": ["What the agent may move per period", "Ajanın dönem başına yetkisi"],
   "l.rules.limit": ["limit 1,500 USDC · set by vote", "limit 1.500 USDC · oyla belirlendi"],
-  "l.rules.log1": ["03:12  held 5,000 USDC · no matching invoice → asked members", "03:12  5.000 USDC bekletildi · eşleşen fatura yok → üyelere soruldu"],
-  "l.rules.log2": ["03:14  invoice #015 is 3 days late → reminded the client", "03:14  #015 faturası 3 gün gecikti → müşteriye hatırlatıldı"],
-  "l.rules.log3": ["03:20  proposal 07 passed 2/3 · reserve = 3 months", "03:20  öneri 07 kabul 2/3 · yedek = 3 ay"],
+  "l.rules.log1": ["03:04  2,000 USDC from Base → matched invoice #014", "03:04  Base'den 2.000 USDC → #014 faturasıyla eşleşti"],
+  "l.rules.log2": ["03:09  hosting bill 48 USDC · known vendor → paid", "03:09  hosting faturası 48 USDC · tanınan tedarikçi → ödendi"],
+  "l.rules.log3": ["03:12  5,000 USDC · no invoice, over limit → held", "03:12  5.000 USDC · fatura yok, limit üstü → bekletildi"],
 
   "l.close.period": ["Period 11", "11. dönem"],
   "l.close.opens": ["opens today", "bugün açılıyor"],

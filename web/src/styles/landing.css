@@ -310,3 +310,32 @@ body.landing-body #root{width:auto;max-width:none;margin:0;text-align:left;borde
 /* off-board cards wait outside the viewport before they fly in: clip them without making a scroll container */
 .landing{overflow-x:clip}
 .landing:lang(tr) .ptape .now::after{content:"bugün"}
+
+/* ---------- 10-12 pass: word-safe headline, title masks, landing shadow, close spacing ---------- */
+.landing .hero-copy{width:min(50vw,800px)}
+.landing h1{font-size:clamp(56px,6.6vw,116px)}
+.landing:lang(tr) h1{font-size:clamp(50px,6vw,104px)}
+.landing h1 .w{display:inline-block;white-space:nowrap}
+/* each title word rises out of its own mask */
+.landing .wm{display:inline-block;overflow:hidden;vertical-align:top;padding:0 .04em .1em;margin:0 -.04em -.1em}
+.landing .wi{display:inline-block;will-change:transform}
+/* a card in the air throws a wide soft shadow that tightens as it lands (--air: 1 → 0) */
+.landing .card{--air:0}
+.landing .card::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;
+  box-shadow:0 calc(var(--air) * 80px) calc(var(--air) * 70px) calc(var(--air) * -10px) rgba(40,20,5,calc(var(--air) * .45))}
+.landing .sheet::after{display:none}
+.landing .job .jobamt{font-family:var(--f-mono);font-weight:600;font-size:15px;margin:-4px 0 10px}
+.landing .sticky .sig{display:block;margin-top:10px;text-align:right;font-family:var(--f-mono);font-size:12px;color:var(--ink-soft)}
+.landing .votes{max-width:220px}
+
+.landing .ballot .needs{display:block;margin-top:12px}
+.landing .close{height:auto;min-height:calc(100vh - 74px);padding:120px 0 56px}
+@media (max-width:760px){
+  .landing .hero-copy{width:auto}
+  .landing h1{font-size:52px}
+  .landing:lang(tr) h1{font-size:44px}
+  .landing .close{min-height:0;padding:110px 12px 40px}
+}
+.landing .member{width:172px}
+.landing .job{width:252px}
+@media (max-width:760px){.landing .member,.landing .job{width:auto}}

@@ -95,10 +95,14 @@ export function initLanding(root: HTMLElement): () => void {
     new Rope(S.hero, q("#jWeb"), q("#mAli"), { slack: 1.12 }),
     new Rope(S.hero, q("#jWeb"), q("#mAyse"), { slack: 1.14 }),
     new Rope(S.hero, q("#jApi"), q("#mMeh"), { slack: 1.1 }),
+    new Rope(S.hero, q("#jApi"), q("#mAyse"), { slack: 1.08 }),
+    new Rope(S.hero, q("#jApi"), q("#mAli"), { slack: 1.06 }),
   ];
   attach(q("#jWeb"), hr[0]); attach(q("#mAli"), hr[0]);
   attach(q("#jWeb"), hr[1]); attach(q("#mAyse"), hr[1]);
   attach(q("#jApi"), hr[2]); attach(q("#mMeh"), hr[2]);
+  attach(q("#jApi"), hr[3]); attach(q("#mAyse"), hr[3]);
+  attach(q("#jApi"), hr[4]); attach(q("#mAli"), hr[4]);
 
   const br = [
     new Rope(S.but, q("#stA"), q("#sheetPin"), { slack: 1.06 }),
@@ -115,10 +119,10 @@ export function initLanding(root: HTMLElement): () => void {
     ["#inv", tInv], ["#soJob", tInv], ["#soJob", tRes], ["#res", tRes],
     ["#soJob", tAli], ["#pAli", tAli], ["#soJob", tAyse], ["#pAyse", tAyse],
   ] as const).forEach(([sel, r]) => attach(q(sel), r));
-  const bInv = new Bead(S.so, tInv, 9, "2,000 USDC");
-  const bRes = new Bead(S.so, tRes, 4.2, "200 · reserve");
-  const bAli = new Bead(S.so, tAli, 7.6, "1,080 · Bekir");
-  const bAyse = new Bead(S.so, tAyse, 6.2, "720 · Ömer");
+  const bInv = new Bead(S.so, tInv, 9, q("#inv").dataset.bead ?? "");
+  const bRes = new Bead(S.so, tRes, 4.2, q("#res").dataset.bead ?? "");
+  const bAli = new Bead(S.so, tAli, 7.6, q("#pAli").dataset.bead ?? "");
+  const bAyse = new Bead(S.so, tAyse, 6.2, q("#pAyse").dataset.bead ?? "");
   const beads = [bInv, bRes, bAli, bAyse];
 
   const tHold = new Rope(S.rules, q("#sender"), q("#agent"), { slack: 1.16 });
@@ -177,22 +181,66 @@ export function initLanding(root: HTMLElement): () => void {
     s.textContent = String(n).padStart(2, "0");
     ptapeDays.appendChild(s);
   });
-  // split the hero headline into letters for a 1f glyph stagger
+  // split the hero headline into letters for a 1f glyph stagger; letters are grouped per word
+  // so a line can only wrap between words, never inside one
   const walk = (n: Node) => {
     [...n.childNodes].forEach((c) => {
       if (c.nodeType === Node.TEXT_NODE) {
         const f = document.createDocumentFragment();
-        [...(c.textContent ?? "")].forEach((ch) => {
-          const s = document.createElement("span");
-          s.className = "ch";
-          s.textContent = ch === " " ? " " : ch; // nbsp: inline-block spans collapse a plain space
-          f.appendChild(s);
+        (c.textContent ?? "").split(/( )/).forEach((part) => {
+          if (!part) return;
+          if (part === " ") {
+            f.appendChild(document.createTextNode(" "));
+            return;
+          }
+          const w = document.createElement("span");
+          w.className = "w";
+          [...part].forEach((ch) => {
+            const s = document.createElement("span");
+            s.className = "ch";
+            s.textContent = ch;
+            w.appendChild(s);
+          });
+          f.appendChild(w);
         });
         c.replaceWith(f);
       } else walk(c);
     });
   };
   headlineSpans.forEach(walk);
+
+  // scene titles: every word (or highlighted phrase) sits in its own mask and rises out of it
+  const splitEls = qa("[data-split]");
+  const splitHtml = splitEls.map((el) => el.innerHTML);
+  const mask = (inner: Node) => {
+    const m = document.createElement("span");
+    m.className = "wm";
+    const i = document.createElement("span");
+    i.className = "wi";
+    m.appendChild(i);
+    i.appendChild(inner);
+    return m;
+  };
+  splitEls.forEach((el) => {
+    [...el.childNodes].forEach((c) => {
+      if (c.nodeType === Node.TEXT_NODE) {
+        const f = document.createDocumentFragment();
+        (c.textContent ?? "").split(/(\s+)/).forEach((part) => {
+          if (!part) return;
+          f.appendChild(/^\s+$/.test(part) ? document.createTextNode(" ") : mask(document.createTextNode(part)));
+        });
+        c.replaceWith(f);
+      } else {
+        const hole = document.createComment("");
+        c.replaceWith(hole);
+        hole.replaceWith(mask(c));
+      }
+    });
+  });
+  const words = (sel: string) => qa(`${sel} .wi`);
+  /** Words rise out of their masks with a slight tilt that settles. */
+  const rise = (sel: string, duration = 0.6) =>
+    gsap.fromTo(words(sel), { yPercent: 115, rotation: 5 }, { yPercent: 0, rotation: 0, duration, ease: LAND, stagger: 0.05, immediateRender: true });
 
   const totalChars = lines.reduce((a, l) => a + (l.dataset.text ?? "").length, 0);
   const typeTo = (n: number) => {
@@ -201,7 +249,7 @@ export function initLanding(root: HTMLElement): () => void {
       const t = l.dataset.text ?? "";
       const k = clamp(left, 0, t.length);
       left -= t.length;
-      const shown = t.slice(0, k).replace(/(held|reminded|EURC|passed 2\/3|bekletildi|hatırlatıldı|kabul 2\/3)/g, "<b>$1</b>");
+      const shown = t.slice(0, k).replace(/(matched|paid|held|eşleşti|ödendi|bekletildi)/g, "<b>$1</b>");
       l.innerHTML = shown + (k > 0 && k < t.length ? '<span class="caret"></span>' : "");
     });
   };
@@ -213,11 +261,14 @@ export function initLanding(root: HTMLElement): () => void {
     const r = baseRot(el);
     const pin = el.querySelector(":scope > .pin");
     const tl = gsap.timeline();
+    const dur = o.dur ?? 0.42;
     tl.fromTo(
       el,
       { x: o.x ?? 0, y: o.y ?? -340, rotation: r + (o.rot ?? gsap.utils.random(-18, 18)), scale: 1.18, autoAlpha: 0 },
-      { x: 0, y: 0, rotation: r, scale: 1, autoAlpha: 1, duration: o.dur ?? 0.42, ease: LAND, immediateRender: true },
+      { x: 0, y: 0, rotation: r, scale: 1, autoAlpha: 1, duration: dur, ease: LAND, immediateRender: true },
     )
+      // its shadow is wide and soft while it is in the air and snaps tight when it hits the cork
+      .fromTo(el, { "--air": 1 }, { "--air": 0, duration: dur * 0.9, ease: LEAVE, immediateRender: true }, "<")
       .to(el, { scaleX: 1.045, scaleY: 0.95, duration: 0.06, ease: SHIFT })
       .to(el, { scaleX: 1, scaleY: 1, duration: 0.34, ease: POP });
     if (pin)
@@ -271,22 +322,27 @@ export function initLanding(root: HTMLElement): () => void {
     ["#mAli", "#mAyse", "#mMeh", "#jWeb", "#jApi"].forEach((s, i) => tl.add(slam(q(s), { y: -380 - i * 30 }), 0.35 + i * 0.11));
     tl.to(hr, { reveal: 1, duration: 0.7, ease: LAND, stagger: 0.12 }, ">-.2");
     if (matchMedia("(min-width:761px)").matches) {
-      const st = { trigger: q("#hero"), start: "top top", end: "bottom top", scrub: true };
-      gsap.to(qa(".hc"), { yPercent: -90, ease: "none", scrollTrigger: st });
-      gsap.to(q(".hero-copy"), { yPercent: -30, ease: "none", scrollTrigger: { ...st } });
+      // depth parallax: nearer cards (higher data-depth) leave faster and drift apart a little
+      const st = { trigger: q("#hero"), start: "top top", end: "bottom top", scrub: 0.6 };
+      qa(".hc").forEach((c) => {
+        const d = parseFloat(c.dataset.depth ?? "1");
+        gsap.to(c, { yPercent: -90 * d, xPercent: (d - 1) * 40, ease: "none", scrollTrigger: { ...st } });
+      });
+      qa("#hero h1 .line").forEach((l, i) => gsap.to(l, { yPercent: -40 - i * 22, ease: "none", scrollTrigger: { ...st } }));
+      gsap.to(qa(".hero-copy .lede, .hero-copy .btnrow"), { yPercent: -60, autoAlpha: 0.2, ease: "none", scrollTrigger: { ...st } });
     }
   };
 
   const buildBut = (pinned: boolean) => {
     const trigger = q("#but");
     const st = pinned
-      ? { trigger, start: "top top", end: "+=210%", pin: true, scrub: 0.5, invalidateOnRefresh: true }
-      : { trigger, start: "top 75%", end: "bottom 30%", scrub: 0.5, invalidateOnRefresh: true };
+      ? { trigger, start: "top top", end: "+=210%", pin: true, scrub: 0.9, invalidateOnRefresh: true }
+      : { trigger, start: "top 75%", end: "bottom 30%", scrub: 0.9, invalidateOnRefresh: true };
     const tl = gsap.timeline({ scrollTrigger: st });
     const sheet = q("#sheet");
     const halves = [q("#sheet .half.l"), q("#sheet .half.r")];
     tl.add(slam(sheet, { y: -520, rot: -20, dur: 0.6 }))
-      .fromTo(q(".but-title"), { yPercent: 70, autoAlpha: 0 }, { yPercent: 0, autoAlpha: 1, duration: 0.6, ease: LAND }, "-=.3")
+      .add(rise(".but-title", 0.7), "-=.3")
       .add(slam(q("#stA"), { y: -260, x: -120, rot: -24 }), "+=.05")
       .to(br[0], { reveal: 1, duration: 0.4, ease: LAND }, "<.3")
       .add(slam(q("#stB"), { y: -260, x: 140, rot: 20 }), "<.1")
@@ -334,8 +390,8 @@ export function initLanding(root: HTMLElement): () => void {
   const buildSo = (pinned: boolean) => {
     const trigger = q("#so");
     const st = pinned
-      ? { trigger, start: "top top", end: "+=300%", pin: true, scrub: 0.5, invalidateOnRefresh: true }
-      : { trigger, start: "top 70%", end: "bottom 40%", scrub: 0.5, invalidateOnRefresh: true };
+      ? { trigger, start: "top top", end: "+=300%", pin: true, scrub: 0.9, invalidateOnRefresh: true }
+      : { trigger, start: "top 70%", end: "bottom 40%", scrub: 0.9, invalidateOnRefresh: true };
     const tl = gsap.timeline({ scrollTrigger: st });
     const step = (i: number) => gsap.to(q(`.step:nth-child(${i})`), { opacity: 1, x: 0, duration: 0.35, ease: LAND });
     const flag = (s: string) => gsap.fromTo(q(s), { y: -70, rotation: -14, autoAlpha: 0 }, { y: 0, rotation: 0, autoAlpha: 1, duration: 0.4, ease: POP });
@@ -347,7 +403,7 @@ export function initLanding(root: HTMLElement): () => void {
         bead.on = t > 0 && t < 1;
       });
     const burst = q("#burst");
-    tl.fromTo(q(".so-title"), { yPercent: 60, autoAlpha: 0 }, { yPercent: 0, autoAlpha: 1, duration: 0.5, ease: LAND })
+    tl.add(rise(".so-title"))
       .add(slam(q("#inv"), { y: -320, rot: -18 }), "<.15")
       .add(step(1), "<.25")
       .add(flag("#fl1"), "<")
@@ -396,11 +452,11 @@ export function initLanding(root: HTMLElement): () => void {
   const buildRules = (pinned: boolean) => {
     const trigger = q("#rules");
     const st = pinned
-      ? { trigger, start: "top top", end: "+=320%", pin: true, scrub: 0.5, invalidateOnRefresh: true }
-      : { trigger, start: "top 70%", end: "bottom 35%", scrub: 0.5, invalidateOnRefresh: true };
+      ? { trigger, start: "top top", end: "+=320%", pin: true, scrub: 0.9, invalidateOnRefresh: true }
+      : { trigger, start: "top 70%", end: "bottom 35%", scrub: 0.9, invalidateOnRefresh: true };
     const tl = gsap.timeline({ scrollTrigger: st });
     const ballot = q("#ballot");
-    tl.fromTo(q(".rules-title"), { yPercent: 50, autoAlpha: 0 }, { yPercent: 0, autoAlpha: 1, duration: 0.5, ease: LAND })
+    tl.add(rise(".rules-title"))
       .add(slam(ballot, { x: -420, y: -60, rot: -16 }), "<.2");
     // YES stamps: ink splashes, stamp lands with overshoot, the tally rolls
     qa(".vote").slice(0, 2).forEach((v, i) => {
@@ -476,7 +532,10 @@ export function initLanding(root: HTMLElement): () => void {
 
   const buildClose = () => {
     const tl = gsap.timeline({ paused: true });
-    tl.add(slam(q("#closeCard"), { y: 260, rot: -10, dur: 0.6 })).add(slam(q("#periodCard"), { y: -260, x: 160, rot: 32 }), "-=.15");
+    tl.add(slam(q("#closeCard"), { y: 260, rot: -10, dur: 0.6 }))
+      .add(rise("#closeCard h2", 0.7), "-=.3")
+      .from(qa("#closeCard > p, #closeCard .btnrow > *"), { y: 22, autoAlpha: 0, duration: 0.45, ease: LAND, stagger: 0.08 }, "-=.45")
+      .add(slam(q("#periodCard"), { y: -260, x: 160, rot: 32 }), "-=.3");
     ScrollTrigger.create({ trigger: q("#start"), start: "top 70%", once: true, onEnter: () => void tl.play() });
   };
 
@@ -551,6 +610,7 @@ export function initLanding(root: HTMLElement): () => void {
     ptapeTicks.innerHTML = "";
     ptapeDays.innerHTML = "";
     headlineSpans.forEach((s, i) => (s.innerHTML = headlineHtml[i]));
+    splitEls.forEach((el, i) => (el.innerHTML = splitHtml[i]));
     if (import.meta.env.DEV) delete (window as unknown as { __orta?: unknown }).__orta;
   };
 }
