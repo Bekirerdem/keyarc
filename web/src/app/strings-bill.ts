@@ -98,6 +98,18 @@ export const B = defineStrings({
   "e.claim": ["Claim {amt} USDC", "{amt} USDC'yi çek"],
   "e.connect": ["Connect your wallet to see what you earned.", "Kazandıklarını görmek için cüzdanını bağla."],
   "e.noTeams": ["You're not in a team yet.", "Henüz bir ekipte değilsin."],
+  "fx.label": ["take it in euros", "euro olarak al"],
+  "fx.have": ["In your wallet: {usdc} USDC · {eurc} EURC", "Cüzdanında: {usdc} USDC · {eurc} EURC"],
+  "fx.ph": ["USDC to convert", "Çevrilecek USDC"],
+  "fx.quote": ["≈ {out} EURC (at least {min})", "≈ {out} EURC (en az {min})"],
+  "fx.short": ["Not that much USDC in your wallet.", "Cüzdanında o kadar USDC yok."],
+  "fx.hint": [
+    "Swaps USDC to Circle's EURC on Arc through Uniswap (0.05% fee, at most 1% slippage). You sign it; nothing passes through the team chest.",
+    "USDC'yi Arc'ta Uniswap üzerinden Circle'ın EURC'sine çevirir (%0,05 ücret, en fazla %1 kayma). Sen imzalarsın; para ekip kasasından geçmez.",
+  ],
+  "fx.allow": ["Allow swap", "Çevirme izni"],
+  "fx.allowSwap": ["1 · Allow, then convert", "1 · İzin ver, sonra çevir"],
+  "fx.swap": ["Convert to EURC", "EURC'ye çevir"],
   "tx.setDest": ["Set payout address", "Ödeme adresini ayarla"],
   "tx.claim": ["Claim", "Çek"],
 });

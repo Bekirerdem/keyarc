@@ -64,7 +64,7 @@ export const L = defineStrings({
   "l.so.flag3.n": ["1,800", "1.800"],
   "l.so.flag3": [" split 60 / 40", " 60 / 40 bölündü"],
   "l.so.payA": ["takes USDC · cashes out to lira", "USDC alır · TL'ye çevirir"],
-  "l.so.payB": ["takes EURC", "EURC olarak alır"],
+  "l.so.payB": ["converts to EURC", "EURC'ye çevirir"],
 
   // 4 · rules + the collecting agent
   "l.rules.title": ["Rules change by vote. The agent collects inside them.", "Kurallar oyla değişir. Ajan tahsilatı o kuralların içinde yapar."],
@@ -82,7 +82,7 @@ export const L = defineStrings({
   "l.rules.limit": ["limit 1,500 USDC · set by vote", "limit 1.500 USDC · oyla belirlendi"],
   "l.rules.log1": ["03:12  held 5,000 USDC · no matching invoice → asked members", "03:12  5.000 USDC bekletildi · eşleşen fatura yok → üyelere soruldu"],
   "l.rules.log2": ["03:14  invoice #015 is 3 days late → reminded the client", "03:14  #015 faturası 3 gün gecikti → müşteriye hatırlatıldı"],
-  "l.rules.log3": ["03:20  paid Ömer's share in EURC · proposal 07 passed 2/3", "03:20  Ömer'in payı EURC olarak ödendi · öneri 07 kabul 2/3"],
+  "l.rules.log3": ["03:20  proposal 07 passed 2/3 · reserve = 3 months", "03:20  öneri 07 kabul 2/3 · yedek = 3 ay"],
 
   "l.close.period": ["Period 11", "11. dönem"],
   "l.close.opens": ["opens today", "bugün açılıyor"],

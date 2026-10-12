@@ -3,9 +3,11 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { formatUnits, isAddress, type Address, type Hex } from "viem";
 import { useConnection } from "wagmi";
-import { collectiveAbi } from "../lib/abi";
+import { collectiveAbi, erc20Abi } from "../lib/abi";
 import { explorerTx, publicClient } from "../lib/arc";
-import { short, usdc } from "../lib/format";
+import { USDC } from "../lib/contracts";
+import { short, toUsdc, usdc } from "../lib/format";
+import { EURC, POOL_FEE, quoteEurc, routerAbi, SWAP_ROUTER } from "../lib/fx";
 import { useLang } from "../lib/i18n";
 import { collectiveLogs } from "../lib/logs";
 import { useMyChests, type MyChest } from "../lib/team";
@@ -144,8 +146,71 @@ export default function Earnings() {
       </main>
 
       <aside className="side noprint">
+        {me && <ToEurc me={me} />}
         {data.data?.teams.map((x) => <Destination key={x.chest.address} state={x} me={me!} />)}
       </aside>
+    </div>
+  );
+}
+
+/** Swap USDC already in the member's wallet to EURC, signed by the member; nothing passes through the chest or the agent. */
+function ToEurc({ me }: { me: Address }) {
+  const { t } = useLang();
+  const { send, busy } = useTx();
+  const [amount, setAmount] = useState("");
+  const bal = useQuery({
+    queryKey: ["fx-bal", me],
+    refetchInterval: 15_000,
+    queryFn: async () => {
+      const [usdcBal, eurcBal, allowance] = await publicClient.multicall({
+        allowFailure: false,
+        contracts: [
+          { address: USDC, abi: erc20Abi, functionName: "balanceOf", args: [me] },
+          { address: EURC, abi: erc20Abi, functionName: "balanceOf", args: [me] },
+          { address: USDC, abi: erc20Abi, functionName: "allowance", args: [me, SWAP_ROUTER] },
+        ],
+      });
+      return { usdcBal, eurcBal, allowance };
+    },
+  });
+  const amt = Number(amount) > 0 ? toUsdc(amount) : 0n;
+  const quote = useQuery({ queryKey: ["fx-quote", amt.toString()], enabled: amt > 0n, queryFn: () => quoteEurc(amt), staleTime: 10_000 });
+  const enough = !!bal.data && amt > 0n && bal.data.usdcBal >= amt;
+  const approved = !!bal.data && bal.data.allowance >= amt;
+
+  async function go() {
+    if (!quote.data) return;
+    if (!approved) {
+      // exact amount only, never an open allowance
+      const ok = await send(t("fx.allow"), { address: USDC, abi: erc20Abi, functionName: "approve", args: [SWAP_ROUTER, amt] });
+      if (!ok) return;
+    }
+    const fresh = await quoteEurc(amt);
+    const ok = await send(t("fx.swap"), {
+      address: SWAP_ROUTER,
+      abi: routerAbi,
+      functionName: "exactInputSingle",
+      args: [{ tokenIn: USDC, tokenOut: EURC, fee: POOL_FEE, recipient: me, amountIn: amt, amountOutMinimum: fresh.min, sqrtPriceLimitX96: 0n }],
+    });
+    if (ok) {
+      setAmount("");
+      void bal.refetch();
+    }
+  }
+
+  return (
+    <div className="card ink">
+      <div className="label">{t("fx.label")}</div>
+      {bal.data && <p className="mono" style={{ marginTop: 8, opacity: 0.85 }}>{t("fx.have", { usdc: usdc(bal.data.usdcBal), eurc: usdc(bal.data.eurcBal) })}</p>}
+      <input className="input" style={{ marginTop: 10, width: "100%" }} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={t("fx.ph")} />
+      {quote.data && <p className="mono" style={{ marginTop: 8 }}>{t("fx.quote", { out: usdc(quote.data.out), min: usdc(quote.data.min) })}</p>}
+      {amt > 0n && bal.data && !enough && <p className="error" style={{ marginTop: 8 }}>{t("fx.short")}</p>}
+      <p className="hint" style={{ marginTop: 8, opacity: 0.8 }}>{t("fx.hint")}</p>
+      <div style={{ marginTop: 12 }}>
+        <OnArc>
+          <button className="btn small" disabled={!enough || !quote.data || busy} onClick={go}>{approved ? t("fx.swap") : t("fx.allowSwap")}</button>
+        </OnArc>
+      </div>
     </div>
   );
 }
