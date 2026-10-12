@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "landing/*"],
       manifest: {
-        name: "Keyarc — the guild chest, onchain",
+        name: "Keyarc — your team's payment link on Arc",
         short_name: "Keyarc",
-        description: "A shared chest on Arc for teams that earn together.",
+        description: "One payment link for your team; everyone gets their share, on Arc.",
         theme_color: "#1d1a16",
         background_color: "#b9773f",
         display: "standalone",

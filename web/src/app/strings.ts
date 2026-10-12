@@ -3,7 +3,7 @@ import { defineStrings } from "../lib/i18n";
 // Every user-facing string in the app, English + Turkish.
 defineStrings({
   // brand + wallet
-  tagline: ["the guild chest, onchain", "loncanın ortak kasası, zincirde"],
+  tagline: ["your team's payment link, on Arc", "ekibin tahsilat linki, Arc'ta"],
   "wallet.label": ["your wallet", "cüzdanın"],
   "wallet.pitch": ["Pin your wallet to the board to act. Looking around works without one.", "İşlem yapmak için cüzdanını panoya iğnele. Bakınmak için gerek yok."],
   "wallet.connect": ["Connect wallet", "Cüzdanı bağla"],

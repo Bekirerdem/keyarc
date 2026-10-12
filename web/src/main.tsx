@@ -9,10 +9,13 @@ import { ToastProvider } from "./lib/tx";
 import "./styles/app.css";
 import "./app/strings";
 import "./app/strings-agent";
+import "./app/strings-bill";
 
 const Landing = lazy(() => import("./routes/Landing"));
 const Home = lazy(() => import("./app/Home"));
 const NewChest = lazy(() => import("./app/NewChest"));
+const Bill = lazy(() => import("./app/Bill"));
+const Earnings = lazy(() => import("./app/Earnings"));
 const Chest = lazy(() => import("./app/Chest"));
 const Pay = lazy(() => import("./app/Pay"));
 
@@ -26,6 +29,8 @@ const router = createBrowserRouter([
   { path: "/", element: page(<Landing />) },
   { path: "/app", element: page(<Home />) },
   { path: "/app/new", element: page(<NewChest />) },
+  { path: "/app/bill", element: page(<Bill />) },
+  { path: "/app/earnings", element: page(<Earnings />) },
   { path: "/c/:address", element: page(<Chest />) },
   { path: "/pay/:chest/:id", element: page(<Pay />) },
   { path: "*", element: page(<Home />) },
