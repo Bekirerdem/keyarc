@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router";
+import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import { WagmiProvider } from "wagmi";
 import { wagmiConfig } from "./lib/arc";
 import { LangProvider } from "./lib/i18n";
@@ -13,7 +13,6 @@ import "./app/strings-bill";
 
 const Landing = lazy(() => import("./routes/Landing"));
 const Home = lazy(() => import("./app/Home"));
-const NewChest = lazy(() => import("./app/NewChest"));
 const Bill = lazy(() => import("./app/Bill"));
 const Earnings = lazy(() => import("./app/Earnings"));
 const Chest = lazy(() => import("./app/Chest"));
@@ -28,7 +27,7 @@ const page = (el: React.ReactNode) => <Suspense fallback={<div className="board"
 const router = createBrowserRouter([
   { path: "/", element: page(<Landing />) },
   { path: "/app", element: page(<Home />) },
-  { path: "/app/new", element: page(<NewChest />) },
+  { path: "/app/new", element: <Navigate to="/app/bill" replace /> },
   { path: "/app/bill", element: page(<Bill />) },
   { path: "/app/earnings", element: page(<Earnings />) },
   { path: "/c/:address", element: page(<Chest />) },
