@@ -7,13 +7,13 @@ export type Decision = {
   id: string;
   chest: Address;
   at: number;
-  kind: "inflow" | "invoice" | "note" | "payout";
+  kind: "inflow" | "invoice" | "note" | "payout" | "reminder";
   title: string;
   /** Plain facts read from the chain or the document — never written by the model. */
   facts: Record<string, string>;
   checks: Check[];
   model: { name: string; output: unknown } | null;
-  outcome: "paid" | "settled" | "vote" | "held" | "rejected" | "noted" | "distributed";
+  outcome: "paid" | "settled" | "vote" | "held" | "rejected" | "noted" | "distributed" | "drafted";
   /** keccak256 of the canonical record, written on chain as the `ref` of any transaction it led to. */
   ref: Hex;
   tx?: Hex;

@@ -10,6 +10,7 @@ export interface Judge {
   readInvoice(input: InvoiceInput): Promise<InvoiceReading>;
   pickInvoice(input: MatchInput): Promise<MatchJudgement>;
   treasuryNote(input: TreasuryInput): Promise<TreasuryNote>;
+  draftReminder(input: ReminderInput): Promise<Reminder>;
 }
 
 // ── schemas ─────────────────────────────────────────────
@@ -45,12 +46,19 @@ export const TreasuryNote = z.object({
 });
 export type TreasuryNote = z.infer<typeof TreasuryNote>;
 
-export type InvoiceInput = { from: string; subject: string; text: string; pdfBase64?: string };
+export const Reminder = z.object({
+  subject: z.string().describe("Email subject line, under 70 characters"),
+  message: z.string().describe("The reminder body: greeting, two to four short sentences, sign-off with the team name. No link."),
+});
+export type Reminder = z.infer<typeof Reminder>;
+
+export type InvoiceInput ={ from: string; subject: string; text: string; pdfBase64?: string };
 export type MatchInput = {
   inflow: { amountUsdc: string; tx: string; from: string; at: string };
   candidates: { id: string; amountUsdc: string; createdAt: string; payer: string; note: string }[];
 };
 export type TreasuryInput = { facts: Record<string, string> };
+export type ReminderInput = { lang: "en" | "tr"; team: string; job: string; amountUsdc: string; daysOpen: number };
 
 // ── Anthropic implementation ────────────────────────────
 
@@ -70,12 +78,12 @@ export class ClaudeJudge implements Judge {
     this.client = new Anthropic({ apiKey });
   }
 
-  private async ask<T extends z.ZodType>(schema: T, content: Anthropic.MessageParam["content"]): Promise<z.infer<T>> {
+  private async ask<T extends z.ZodType>(schema: T, content: Anthropic.MessageParam["content"], effort: "low" | "high" = "high"): Promise<z.infer<T>> {
     const res = await this.client.messages.parse({
       model: MODEL,
       max_tokens: 4000,
       system: SYSTEM,
-      output_config: { effort: "high", format: zodOutputFormat(schema) },
+      output_config: { effort, format: zodOutputFormat(schema) },
       messages: [{ role: "user", content }],
     });
     if (res.stop_reason === "refusal" || !res.parsed_output) throw new Error(`model returned no usable output (${res.stop_reason})`);
@@ -111,6 +119,24 @@ export class ClaudeJudge implements Judge {
         `<facts>\n${JSON.stringify(input.facts, null, 2)}\n</facts>`,
     }]);
   }
+
+  draftReminder(input: ReminderInput) {
+    return this.ask(Reminder, [{
+      type: "text",
+      text: `Write a short, friendly payment reminder from the team to their client, in ${input.lang === "tr" ? "Turkish" : "English"}. ` +
+        "Say what the invoice is for and the amount, and that it can be paid in USDC from the link below the message. " +
+        "Do not add the link, a due date, late fees or any number that is not in the facts. Keep the tone of a long-term partner.\n" +
+        `<facts>\n${JSON.stringify(input, null, 2)}\n</facts>`,
+    }], "low");
+  }
+}
+
+/** The rules-only reminder: same facts, fixed wording. */
+export function templateReminder(r: ReminderInput): Reminder {
+  const job = r.job || (r.lang === "tr" ? "son işimiz" : "our latest work");
+  return r.lang === "tr"
+    ? { subject: `Hatırlatma: ${job} · ${r.amountUsdc} USDC`, message: `Merhaba,\n\n${job} için ${r.amountUsdc} USDC tutarındaki faturamız hâlâ açık görünüyor. Aşağıdaki linkten Arc ya da Base üzerinden USDC ile ödeyebilirsiniz.\n\nTeşekkürler,\n${r.team}` }
+    : { subject: `Reminder: ${job} · ${r.amountUsdc} USDC`, message: `Hi,\n\nOur invoice for ${job}, ${r.amountUsdc} USDC, still shows as open. You can pay it in USDC from Arc or Base using the link below.\n\nThanks,\n${r.team}` };
 }
 
 /** Used when no API key is configured: no judgement, so everything that needs one is held for a vote. */
@@ -124,5 +150,8 @@ export class NoJudge implements Judge {
   }
   async treasuryNote(): Promise<TreasuryNote> {
     throw new Error("no model configured");
+  }
+  async draftReminder(input: ReminderInput): Promise<Reminder> {
+    return templateReminder(input);
   }
 }

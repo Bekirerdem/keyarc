@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { isAddress, keccak256, toHex, type Address } from "viem";
+import { isAddress, keccak256, toHex, type Address, type Hex } from "viem";
+import { useSignMessage } from "wagmi";
 import { collectiveAbi } from "../lib/abi";
+import { agentMock, modelLabel, requestReminder, type ReminderDraft } from "../lib/agent";
 import { explorerTx } from "../lib/arc";
 import { pct, short, toUsdc, usdc } from "../lib/format";
 import { useLang } from "../lib/i18n";
@@ -11,6 +13,7 @@ import { OnArc } from "./Wallet";
 
 export function Invoices({ chest, invoices, isMember, onChange }: { chest: Chest; invoices: Invoice[]; isMember: boolean; onChange: () => void }) {
   const [open, setOpen] = useState(false);
+  const [reminding, setReminding] = useState<Hex | null>(null);
   const { t } = useLang();
   return (
     <div className="card tilt-r">
@@ -28,19 +31,82 @@ export function Invoices({ chest, invoices, isMember, onChange }: { chest: Chest
         <table className="simple" style={{ marginTop: 14 }}>
           <tbody>
             {invoices.map((inv) => (
-              <tr key={inv.id}>
-                <td>{usdc(inv.amount)} USDC</td>
-                <td>{inv.contributors.map((m, i) => `${short(m)} ${pct(inv.sharesBps[i])}`).join(" · ")}</td>
-                <td><span className={`chip ${inv.status === 2 ? "paid" : inv.status === 1 ? "open" : ""}`}>{t(`inv.status.${inv.status}`)}</span></td>
-                <td>
-                  {inv.status === 1 && <Link to={`/pay/${chest.address}/${inv.id}`}>{t("inv.payLink")}</Link>}
-                  {inv.paidTx && <a href={explorerTx(inv.paidTx)} target="_blank" rel="noreferrer">tx ↗</a>}
-                </td>
-              </tr>
+              <Fragment key={inv.id}>
+                <tr>
+                  <td>{usdc(inv.amount)} USDC</td>
+                  <td>{inv.contributors.map((m, i) => `${short(m)} ${pct(inv.sharesBps[i])}`).join(" · ")}</td>
+                  <td><span className={`chip ${inv.status === 2 ? "paid" : inv.status === 1 ? "open" : ""}`}>{t(`inv.status.${inv.status}`)}</span></td>
+                  <td className="invacts">
+                    {inv.status === 1 && <Link to={`/pay/${chest.address}/${inv.id}`}>{t("inv.payLink")}</Link>}
+                    {inv.status === 1 && (isMember || agentMock()) && (
+                      <button className="linkbtn" aria-expanded={reminding === inv.id} onClick={() => setReminding(reminding === inv.id ? null : inv.id)}>{t("inv.remind")}</button>
+                    )}
+                    {inv.paidTx && <a href={explorerTx(inv.paidTx)} target="_blank" rel="noreferrer">tx ↗</a>}
+                  </td>
+                </tr>
+                {reminding === inv.id && (
+                  <tr className="remindrow"><td colSpan={4}><Reminder chest={chest} invoice={inv} /></td></tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+/** The agent words a reminder from on-chain facts; the team reads it, edits it and sends it from their own app. */
+function Reminder({ chest, invoice }: { chest: Chest; invoice: Invoice }) {
+  const { t, lang } = useLang();
+  const { signMessageAsync } = useSignMessage();
+  const [draft, setDraft] = useState<ReminderDraft | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  async function ask() {
+    setBusy(true);
+    setError("");
+    try {
+      const d = await requestReminder(chest.address, { id: invoice.id, createdTx: invoice.createdTx, amount: invoice.amount }, lang, (m) => signMessageAsync({ message: m }));
+      setDraft(d);
+      setText(d.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message.split("\n")[0] : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!draft) {
+    return (
+      <div className="remind">
+        <p className="hint">{t("inv.remind.why")}</p>
+        <div className="row">
+          <button className="btn small" disabled={busy} onClick={ask}>{busy ? t("inv.remind.drafting") : t("inv.remind.ask")}</button>
+        </div>
+        {error && <div className="error">{error}</div>}
+      </div>
+    );
+  }
+
+  const wa = `https://wa.me/?text=${encodeURIComponent(text)}`;
+  const mail = `mailto:?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(text)}`;
+  return (
+    <div className="remind">
+      <div className="between">
+        <span className="hint">{t("inv.remind.by", { model: modelLabel(draft.model), days: draft.daysOpen })}</span>
+        <span className="chip">{draft.subject}</span>
+      </div>
+      <textarea className="input" rows={8} value={text} onChange={(e) => setText(e.target.value)} aria-label={t("inv.remind.text")} />
+      <div className="row">
+        <a className="btn small" href={wa} target="_blank" rel="noreferrer">WhatsApp</a>
+        <a className="btn small ghost" href={mail}>{t("inv.remind.mail")}</a>
+        <button className="btn small ghost" onClick={() => { void navigator.clipboard?.writeText(text).then(() => setCopied(true)); }}>{copied ? t("inv.remind.copied") : t("inv.remind.copy")}</button>
+      </div>
+      <p className="hint">{t("inv.remind.note")}</p>
     </div>
   );
 }

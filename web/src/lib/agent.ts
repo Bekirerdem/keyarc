@@ -1,13 +1,13 @@
-import type { Address, Hex } from "viem";
+import { formatUnits, type Address, type Hex } from "viem";
 
 // Mirrors agent/src/log.ts and agent/src/payables.ts — kept as plain types so the web bundle doesn't pull the worker.
 export type Check = { name: string; ok: boolean; detail: string };
-export type Outcome = "paid" | "settled" | "vote" | "held" | "rejected" | "noted" | "distributed";
+export type Outcome = "paid" | "settled" | "vote" | "held" | "rejected" | "noted" | "distributed" | "drafted";
 export type Decision = {
   id: string;
   chest: Address;
   at: number;
-  kind: "inflow" | "invoice" | "note" | "payout";
+  kind: "inflow" | "invoice" | "note" | "payout" | "reminder";
   title: string;
   facts: Record<string, string>;
   checks: Check[];
@@ -35,7 +35,7 @@ export function modelLabel(id: string): string {
 export function modelText(d: Decision): string | null {
   const o = d.model?.output as Record<string, unknown> | undefined;
   if (!o) return null;
-  for (const k of ["reasoning", "body", "summary"]) if (typeof o[k] === "string" && o[k]) return o[k] as string;
+  for (const k of ["reasoning", "body", "summary", "message"]) if (typeof o[k] === "string" && o[k]) return o[k] as string;
   return null;
 }
 
@@ -72,6 +72,37 @@ export async function signedPost(
     const body = (await r.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `agent ${r.status}`);
   }
+}
+
+/** A payment reminder the agent drafted; the message already ends with the pay link. */
+export type ReminderDraft = { subject: string; message: string; payLink: string; model: string; at: number; daysOpen: number };
+
+/** Member-signed: the agent checks the invoice is open on chain and words the reminder; the team sends it. */
+export async function requestReminder(
+  chest: Address,
+  invoice: { id: Hex; createdTx: Hex; amount: bigint },
+  lang: "en" | "tr",
+  sign: (message: string) => Promise<Hex>,
+): Promise<ReminderDraft> {
+  if (agentMock()) {
+    // the walkthrough has no wallet: show what a member would get back
+    const amt = formatUnits(invoice.amount, 6);
+    const payLink = `${window.location.origin}/pay/${chest}/${invoice.id}`;
+    const body = lang === "tr"
+      ? `Merhaba,\n\nEkim ayı web sitesi bakımı için ${amt} USDC tutarındaki faturamız hâlâ açık görünüyor. Uygun olduğunuzda aşağıdaki linkten Arc ya da Base üzerinden USDC ile ödeyebilirsiniz.\n\nİyi çalışmalar,\nKeyarc Studio`
+      : `Hi,\n\nOur invoice for October's website upkeep, ${amt} USDC, still shows as open. Whenever it suits you, you can pay it in USDC from Arc or Base using the link below.\n\nBest,\nKeyarc Studio`;
+    return { subject: lang === "tr" ? "Hatırlatma: Ekim web sitesi bakımı" : "Reminder: October website upkeep", message: `${body}\n\n${payLink}`, payLink, model: "claude-haiku-5-5", at: Date.now(), daysOpen: 9 };
+  }
+  const message = JSON.stringify({ chest, at: Date.now(), id: invoice.id, createdTx: invoice.createdTx, lang });
+  const signature = await sign(message);
+  const r = await fetch(`${AGENT_URL}/reminder?chest=${chest}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message, signature }),
+  });
+  const body = (await r.json().catch(() => ({}))) as ReminderDraft & { error?: string };
+  if (!r.ok) throw new Error(body.error ?? `agent ${r.status}`);
+  return body;
 }
 
 // ── mock data ───────────────────────────────────────────

@@ -23,6 +23,7 @@ defineStrings({
   "ag.o.rejected": ["refused", "reddedildi"],
   "ag.o.noted": ["note", "not"],
   "ag.o.distributed": ["paid out", "dağıtıldı"],
+  "ag.o.drafted": ["reminder drafted", "hatırlatma yazıldı"],
   "ag.stamp.refused": ["REFUSED", "REDDEDİLDİ"],
   "ag.note": ["this week's treasury note", "bu haftanın hazine notu"],
   "ag.suggest": ["Suggests a {pct}% reserve share", "Yedek payını %{pct} yapmayı öneriyor"],
