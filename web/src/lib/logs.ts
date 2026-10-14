@@ -5,6 +5,7 @@ import { collectiveAbi } from "./abi";
 // Providers cap eth_getLogs ranges differently (Arc ~5k, thirdweb 1k, dRPC free tier lower still), so stay
 // under the smallest cap; the local cache means only new blocks are scanned on later visits.
 const CHUNK = 900n;
+const PARALLEL = 8;
 
 type Cached = { from: string; to: string; logs: SerializedLog[] };
 type SerializedLog = { blockNumber: string; transactionHash: string; logIndex: number; data: `0x${string}`; topics: `0x${string}`[] };
@@ -55,10 +56,12 @@ export async function collectiveLogs(a: Address) {
   const raw: SerializedLog[] = cached ? [...cached.logs] : [];
   const start = cached ? BigInt(cached.from) : from;
 
-  while (from <= head) {
-    const to = from + CHUNK > head ? head : from + CHUNK;
-    const logs: Log[] = await publicClient.getLogs({ address: a, fromBlock: from, toBlock: to });
-    for (const l of logs) {
+  const ranges: [bigint, bigint][] = [];
+  for (; from <= head; from += CHUNK + 1n) ranges.push([from, from + CHUNK > head ? head : from + CHUNK]);
+  // a first visit to a chest a few days old is a few hundred ranges: fetch them a handful at a time, keep block order
+  for (let i = 0; i < ranges.length; i += PARALLEL) {
+    const batch = await Promise.all(ranges.slice(i, i + PARALLEL).map(([f, t]) => publicClient.getLogs({ address: a, fromBlock: f, toBlock: t })));
+    for (const l of batch.flat() as Log[]) {
       raw.push({
         blockNumber: (l.blockNumber ?? 0n).toString(),
         transactionHash: l.transactionHash ?? "0x",
@@ -67,7 +70,6 @@ export async function collectiveLogs(a: Address) {
         topics: l.topics as `0x${string}`[],
       });
     }
-    from = to + 1n;
   }
   save(a, { from: start.toString(), to: head.toString(), logs: raw });
 
