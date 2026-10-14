@@ -7,7 +7,7 @@
 Clients pay one link. The money lands in the team's chest, a reserve goes aside first,<br/>
 and everyone is paid by the shares written on the invoice. Rules change only by vote.
 
-[**Live app**](https://keyarc.pages.dev) · [Demo chest](https://keyarc.pages.dev/c/0xd612E26C268375d7ec80FeC3c35623Db9E58aa2c) · [Contracts](contracts/src) · [Agent](agent/src) · [Mainnet addresses](deployments/arc-mainnet.json)
+[**Live app**](https://keyarc.app) · [Demo chest](https://keyarc.app/c/0xd612E26C268375d7ec80FeC3c35623Db9E58aa2c) · [Contracts](contracts/src) · [Agent](agent/src) · [Mainnet addresses](deployments/arc-mainnet.json)
 
 ![Arc mainnet](https://img.shields.io/badge/Arc-mainnet%20·%20chain%205042-1d1a16)
 ![Contract tests](https://img.shields.io/badge/contract%20tests-72%20passing-1f6d3a)
