@@ -4,6 +4,8 @@ import { defineStrings } from "../lib/i18n";
 defineStrings({
   // brand + wallet
   tagline: ["your team's payment link, on Arc", "ekibin tahsilat linki, Arc'ta"],
+  "foot.contracts": ["Contracts", "Kontratlar"],
+  "foot.live": ["Live on Arc mainnet", "Arc mainnet'te canlı"],
   "wallet.label": ["your wallet", "cüzdanın"],
   "wallet.pitch": ["Pin your wallet to the board to act. Looking around works without one.", "İşlem yapmak için cüzdanını panoya iğnele. Bakınmak için gerek yok."],
   "wallet.connect": ["Connect wallet", "Cüzdanı bağla"],

@@ -91,6 +91,7 @@ html.has-cursor .landing,html.has-cursor .landing *{cursor:none!important}
 .landing .strip{position:fixed;top:18px;left:28px;right:28px;z-index:50;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none}
 .landing .brand{pointer-events:auto;position:relative;background:rgba(243,236,223,.94);padding:10px 18px 9px;transform:rotate(-1.2deg);
   box-shadow:0 6px 16px -6px rgba(40,20,5,.5)}
+.landing .brand .logo{vertical-align:-4px;margin-right:8px}
 .landing .brand b{font-family:var(--f-display);font-weight:800;font-size:22px;letter-spacing:-.02em}
 .landing .brand span{font-family:var(--f-mono);font-size:11px;margin-left:10px;color:var(--ink-soft)}
 .landing .brand .tape{top:-12px;left:30%;width:70px;transform:rotate(4deg)}
@@ -236,8 +237,27 @@ html.has-cursor .landing,html.has-cursor .landing *{cursor:none!important}
 .landing .close-card h2{font-family:var(--f-display);font-weight:800;font-size:clamp(54px,7vw,118px);line-height:.9;letter-spacing:-.045em}
 .landing .close-card p{margin-top:24px;max-width:560px;font-size:19px;line-height:1.5;color:var(--ink-soft)}
 .landing .period{position:absolute;right:-30px;top:-34px;width:210px;z-index:2}
-.landing .foot{position:relative;z-index:1;display:flex;justify-content:space-between;padding:22px 32px 30px;font-family:var(--f-mono);font-size:12px;color:var(--paper)}
-.landing .foot a{color:var(--paper)}
+.landing .foot{position:relative;z-index:1;background:var(--ink);color:var(--paper);padding:56px 56px 24px;margin:0 28px;box-shadow:0 -10px 30px -18px rgba(0,0,0,.6)}
+.landing .foot a{color:var(--paper);text-decoration:none}
+.landing .foot-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:40px}
+.landing .foot-mark{display:inline-flex;align-items:center;gap:12px}
+.landing .foot-mark b{font-family:var(--f-display);font-weight:800;font-size:30px;letter-spacing:-.03em}
+.landing .foot-brand p{font-family:var(--f-note);font-size:21px;line-height:1.3;margin-top:16px;max-width:380px}
+.landing .foot .live{display:inline-flex;align-items:center;gap:8px;margin-top:20px;font-family:var(--f-mono);font-size:12px;border:1px solid rgba(243,236,223,.3);padding:7px 11px}
+.landing .foot .live i{width:8px;height:8px;border-radius:50%;background:#3fbf6a;box-shadow:0 0 0 3px rgba(63,191,106,.25)}
+.landing .foot-col{display:flex;flex-direction:column;gap:11px}
+.landing .foot-col h4{font-family:var(--f-mono);font-size:11px;font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:var(--kraft);margin-bottom:4px}
+.landing .foot-col a{font-size:15px;width:fit-content;transition:color .2s var(--e-land),translate .2s var(--e-pop)}
+.landing .foot-col a:hover{color:var(--glow);translate:2px 0}
+.landing .foot-col .arr{color:var(--glow)}
+.landing .foot-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:44px;padding-top:18px;border-top:1px dashed rgba(243,236,223,.25);font-family:var(--f-mono);font-size:12px;color:rgba(243,236,223,.7)}
+.landing .foot-lang{box-shadow:none;background:rgba(255,255,255,.08)}
+@media (max-width:900px){
+  .landing .foot{margin:0;padding:44px 20px 22px}
+  .landing .foot-grid{grid-template-columns:1fr 1fr;gap:30px 20px}
+  .landing .foot-brand{grid-column:1/-1}
+  .landing .foot-bottom{flex-wrap:wrap;gap:12px}
+}
 
 @media (hover:hover) and (pointer:fine){
   .landing .card.lift:hover{translate:0 -7px;box-shadow:var(--lift-shadow)}

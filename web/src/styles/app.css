@@ -26,18 +26,21 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #root { min-height: 100%; }
-body { font-family: var(--f-body); color: var(--ink); background: var(--cork-deep); -webkit-font-smoothing: antialiased; }
+body {
+  font-family: var(--f-body); color: var(--ink); -webkit-font-smoothing: antialiased;
+  /* the cork runs under the footer too, so a short page doesn't end in a bare strip */
+  background:
+    radial-gradient(120% 90% at 30% 0%, rgba(255, 220, 160, 0.18), transparent 60%),
+    linear-gradient(rgba(60, 30, 8, 0.25), rgba(60, 30, 8, 0.25)),
+    url("/landing/cork.jpg") center top / 900px repeat,
+    var(--cork);
+}
 a { color: inherit; }
 button { font: inherit; }
 
 /* ── board shell ─────────────────────────────── */
 .board {
-  min-height: 100vh;
-  background:
-    radial-gradient(120% 90% at 30% 0%, rgba(255, 220, 160, 0.18), transparent 60%),
-    linear-gradient(rgba(60, 30, 8, 0.25), rgba(60, 30, 8, 0.25)),
-    url("/landing/cork.jpg") center / 900px repeat,
-    var(--cork);
+  min-height: calc(100vh - 96px);
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr) 360px;
   gap: 28px;
@@ -91,6 +94,7 @@ button { font: inherit; }
 /* ── brand tape ──────────────────────────────── */
 .brand { display: inline-flex; align-items: baseline; gap: 10px; background: var(--paper); padding: 12px 16px; box-shadow: var(--rest); text-decoration: none; rotate: -1deg; position: relative; }
 .brand::after { content: ""; position: absolute; top: -10px; left: 24px; width: 70px; height: 20px; background: rgba(255, 236, 170, 0.75); rotate: -4deg; }
+.brand .logo { align-self: center; flex: none; }
 .brand b { font-family: var(--f-display); font-weight: 800; font-size: 24px; letter-spacing: -0.02em; }
 .brand span { font-family: var(--f-mono); font-size: 11px; color: var(--ink-soft); }
 
@@ -149,7 +153,8 @@ table.simple td, table.simple th { text-align: left; padding: 8px 4px; border-bo
 .langswitch button:focus-visible { outline: 2px dashed var(--glow); outline-offset: 2px; }
 
 .brandrow { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
-.brandrow .brand span { white-space: nowrap; }
+.brandrow .brand { flex-wrap: wrap; row-gap: 2px; align-items: center; }
+.brandrow .brand span { white-space: nowrap; flex-basis: 100%; padding-left: 36px; }
 
 /* ── agent panel ─────────────────────────────────────── */
 /* long card: a tilt would shift its far end sideways, so it stays straight */
@@ -225,3 +230,16 @@ table.simple td, table.simple th { text-align: left; padding: 8px 4px; border-bo
 .remind { display: grid; gap: 10px; }
 .remind textarea.input { font-size: 13px; line-height: 1.5; resize: vertical; white-space: pre-wrap; }
 .remind .row { flex-wrap: wrap; }
+
+/* ── app footer ──────────────────────────────── */
+.appfoot { margin-top: 8px; padding: 0 28px 28px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.appfoot-brand { display: inline-flex; align-items: center; gap: 9px; background: var(--paper); padding: 9px 14px; box-shadow: var(--rest); text-decoration: none; color: var(--ink); rotate: -0.6deg; }
+.appfoot-brand b { font-family: var(--f-display); font-weight: 800; font-size: 17px; letter-spacing: -0.02em; }
+.appfoot-brand span { font-family: var(--f-mono); font-size: 11px; color: var(--ink-soft); }
+.appfoot nav { display: flex; align-items: center; gap: 6px; background: var(--ink); padding: 6px; box-shadow: var(--rest); flex-wrap: wrap; }
+.appfoot nav a { font-family: var(--f-mono); font-size: 12px; color: var(--paper); text-decoration: none; padding: 7px 10px; }
+.appfoot nav a:hover { background: rgba(255, 255, 255, 0.1); }
+.appfoot .live { display: inline-flex; align-items: center; gap: 7px; font-family: var(--f-mono); font-size: 11px; color: var(--paper); padding: 7px 10px; }
+.appfoot .live i { width: 7px; height: 7px; border-radius: 50%; background: #3fbf6a; box-shadow: 0 0 0 3px rgba(63, 191, 106, 0.25); }
+@media (max-width: 760px) { .appfoot { padding: 0 16px 22px; } }
+@media (max-width: 600px) { .appfoot-brand span { display: none; } }

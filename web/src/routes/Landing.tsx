@@ -3,9 +3,12 @@ import { Link } from "react-router";
 import { initLanding } from "../landing/engine";
 import "../landing/strings";
 import { LangSwitch, useLang } from "../lib/i18n";
+import { Logo } from "../lib/Logo";
 import "../styles/landing.css";
 
 const FACTORY_URL = "https://explorer.arc.io/address/0x295F88F793E38eB8be6684b13e02799aADAEd0d9";
+const REPO_URL = "https://github.com/Bekirerdem/keyarc";
+const DEMO_PATH = "/c/0xd612E26C268375d7ec80FeC3c35623Db9E58aa2c";
 
 type CardStyle = CSSProperties & { "--r": string };
 /** Position + resting tilt for a pinned card. */
@@ -82,7 +85,7 @@ function Board() {
       <div className="cursor" aria-hidden="true"><i className="c-needle" /><i className="c-head" /></div>
 
       <div className="strip">
-        <div className="brand"><div className="tape" /><b>Keyarc</b><span>{t("l.tagline")}</span></div>
+        <div className="brand"><div className="tape" /><Logo size={24} /><b>Keyarc</b><span>{t("l.tagline")}</span></div>
         <nav className="navcard" aria-label="Main">
           <a href="#but">{t("l.nav.why")}</a>
           <a href="#so">{t("l.nav.how")}</a>
@@ -216,7 +219,37 @@ function Board() {
           </div>
         </div>
       </section>
-      <footer className="foot"><span>{t("l.foot.a")}</span><span>{t("l.foot.b")}</span></footer>
+      <footer className="foot">
+        <div className="foot-grid">
+          <div className="foot-brand">
+            <Link to="/" className="foot-mark"><Logo size={40} dark /><b>Keyarc</b></Link>
+            <p>{t("l.foot.line")}</p>
+            <span className="live"><i />{t("l.foot.live")}</span>
+          </div>
+          <nav className="foot-col" aria-label={t("l.foot.product")}>
+            <h4>{t("l.foot.product")}</h4>
+            <Link to="/app/bill">{t("l.hero.start")} <span className="arr">→</span></Link>
+            <Link to="/app/earnings">{t("l.foot.earned")}</Link>
+            <Link to={DEMO_PATH}>{t("l.foot.demo")}</Link>
+            <a href="#so">{t("l.foot.how")}</a>
+          </nav>
+          <nav className="foot-col" aria-label={t("l.foot.trust")}>
+            <h4>{t("l.foot.trust")}</h4>
+            <a href={FACTORY_URL} target="_blank" rel="noopener noreferrer">{t("l.foot.contracts")} ↗</a>
+            <Link to={DEMO_PATH}>{t("l.foot.agent")}</Link>
+            <a href={`${REPO_URL}#security-model`} target="_blank" rel="noopener noreferrer">{t("l.foot.security")} ↗</a>
+            <a href={`${REPO_URL}/blob/main/deployments/arc-mainnet.json`} target="_blank" rel="noopener noreferrer">{t("l.foot.addresses")} ↗</a>
+          </nav>
+          <nav className="foot-col" aria-label={t("l.foot.source")}>
+            <h4>{t("l.foot.source")}</h4>
+            <a href={REPO_URL} target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+            <a href={`${REPO_URL}#readme`} target="_blank" rel="noopener noreferrer">README ↗</a>
+            <a href="https://www.arc.network" target="_blank" rel="noopener noreferrer">Arc ↗</a>
+            <a href="https://developers.circle.com/cctp" target="_blank" rel="noopener noreferrer">Circle CCTP ↗</a>
+          </nav>
+        </div>
+        <div className="foot-bottom"><span>{t("l.foot.legal")}</span><LangSwitch className="foot-lang" /><span>keyarc.app</span></div>
+      </footer>
     </div>
   );
 }

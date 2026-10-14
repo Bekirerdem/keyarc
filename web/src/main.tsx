@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import { WagmiProvider } from "wagmi";
 import { wagmiConfig } from "./lib/arc";
+import { AppFooter } from "./app/Footer";
 import { LangProvider } from "./lib/i18n";
 import { ToastProvider } from "./lib/tx";
 import "./styles/app.css";
@@ -23,16 +24,18 @@ const queryClient = new QueryClient({
 });
 
 const page = (el: React.ReactNode) => <Suspense fallback={<div className="board" />}>{el}</Suspense>;
+// app pages carry a slim footer; the landing has its own
+const app = (el: React.ReactNode) => page(<>{el}<AppFooter /></>);
 
 const router = createBrowserRouter([
   { path: "/", element: page(<Landing />) },
-  { path: "/app", element: page(<Home />) },
+  { path: "/app", element: app(<Home />) },
   { path: "/app/new", element: <Navigate to="/app/bill" replace /> },
-  { path: "/app/bill", element: page(<Bill />) },
-  { path: "/app/earnings", element: page(<Earnings />) },
-  { path: "/c/:address", element: page(<Chest />) },
-  { path: "/pay/:chest/:id", element: page(<Pay />) },
-  { path: "*", element: page(<Home />) },
+  { path: "/app/bill", element: app(<Bill />) },
+  { path: "/app/earnings", element: app(<Earnings />) },
+  { path: "/c/:address", element: app(<Chest />) },
+  { path: "/pay/:chest/:id", element: app(<Pay />) },
+  { path: "*", element: app(<Home />) },
 ]);
 
 createRoot(document.getElementById("root")!).render(

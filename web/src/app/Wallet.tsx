@@ -7,6 +7,7 @@ import { publicClient } from "../lib/arc";
 import { USDC } from "../lib/contracts";
 import { short, usdc } from "../lib/format";
 import { LangSwitch, useLang } from "../lib/i18n";
+import { Logo } from "../lib/Logo";
 import { useArcGuard } from "../lib/tx";
 
 export function useUsdcBalance(address?: `0x${string}`) {
@@ -68,6 +69,7 @@ export function Brand() {
   return (
     <div className="brandrow">
       <Link className="brand" to="/">
+        <Logo size={26} />
         <b>Keyarc</b>
         <span>{t("tagline")}</span>
       </Link>
