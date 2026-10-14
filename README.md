@@ -11,7 +11,7 @@ and everyone is paid by the shares written on the invoice. Rules change only by 
 
 ![Arc mainnet](https://img.shields.io/badge/Arc-mainnet%20·%20chain%205042-1d1a16)
 ![Contract tests](https://img.shields.io/badge/contract%20tests-72%20passing-1f6d3a)
-![Agent tests](https://img.shields.io/badge/agent%20tests-15%20passing-1f6d3a)
+![Agent tests](https://img.shields.io/badge/agent%20tests-20%20passing-1f6d3a)
 ![Model](https://img.shields.io/badge/agent%20model-Claude%20Haiku%205.5-b5651d)
 ![License](https://img.shields.io/badge/license-MIT-c9331f)
 
@@ -91,6 +91,7 @@ A Cloudflare Worker that does the team's bookkeeping. For anything that needs ju
 | **Collections** | Scans USDC inflows and matches each to an open invoice. | The rules find exactly one invoice the inflow pays (exact amount, at most 0.5% over), **and** the model agrees with ≥ 80% confidence, **and** the amount is within the period cap, **and** the funds are in the chest. Over the cap → it becomes a vote. Otherwise → **held** for members. |
 | **Payables** | Reads vendor bills (email or upload, PDFs included), screens them for fraud, pays them. | Vendor is in the members' registry; currency is right; amount ≤ vendor max and ≤ 3× their usual bill; invoice number never paid before; payment details unchanged; no pressure or hidden instructions in the bill; payee is on the on-chain allowlist; amount within cap. Any fraud signal → rejected. |
 | **Cross-chain** | Relays CCTP burns from Base to Arc. | Circle's attested message must name this chest as mint recipient and Arc (domain 26) as destination. |
+| **Payment reminders** | When a member asks, drafts a short reminder for an open invoice in the team's language, with the pay link. | Member-signed request. The invoice must be open and created by this chest (checked on chain); amount and age come from the chain, the link is appended by code. Nothing is sent: the team edits it and sends it by WhatsApp, email or copy. |
 | **Treasury note** | Writes a weekly note on income, reserve and runway; may suggest a new reserve share. | Only a suggestion. Members adopt it with one click, which opens a rules vote. |
 | **Period close** | Calls `distribute()` once a period has ended and the pot isn't empty. | Housekeeping only: no judgement, no model. |
 
@@ -144,7 +145,8 @@ Earlier versions (v1, v2) and every hash are in [`deployments/arc-mainnet.json`]
   - I5: released reserve can't be recaptured through a self-invoice or exceed the reserve.
 - **Agent bounds live in the contract, not in the prompt.** A stolen agent key can do no more than its period caps allow, and only towards allowlisted addresses ([`AgentGuards.t.sol`](contracts/test/AgentGuards.t.sol)).
 - **Prompt-injection resistant payables.** Bills are untrusted input: the model flags pressure and hidden instructions, and it never chooses a payee or an amount.
-- **Signed configuration.** Changes to the agent's vendor registry, inbox and on-demand runs must be signed by a current member within the last 10 minutes.
+- **Signed configuration.** Changes to the agent's vendor registry, inbox, on-demand runs and reminder drafts must be signed by a current member within the last 10 minutes.
+- **No open door to the free tier.** The one unsigned write (an invoice note, which the client's pay page also sends) is accepted only for open invoices of a managed chest, at most three times each. A pass reads a bounded number of blocks, so it stays inside the Workers subrequest limit.
 - **Exact-amount approvals only.** The app never asks for an open-ended allowance.
 
 ## Repository map
@@ -157,12 +159,14 @@ contracts/   Solidity 0.8.28 · Foundry · OpenZeppelin v5
 
 agent/       Cloudflare Worker · KV · email handler · Claude Haiku 5.5
   src/index.ts                 HTTP API, signed member requests, the per-chest cycle
-  src/collections.ts           inflow scanning and invoice matching
+  src/collections.ts           inflow scanning (budgeted per pass), open-invoice index, invoice matching
+  src/reminders.ts             payment reminder drafts for open invoices
   src/payables.ts              vendor registry, bill screening, payment
   src/cctp.ts                  Base → Arc attestation relay
   src/treasury.ts              weekly treasury note
   src/llm.ts                   model judge (structured output) + rules-only fallback
   src/log.ts                   sealed decision records
+  scripts/catch-up.ts          rebuilds a chest's open-invoice index after the agent was idle
 
 web/         Vite · React 19 · TypeScript strict · wagmi · viem · GSAP
   src/routes/Landing.tsx       the story (workshop board, scroll scenes)
@@ -206,11 +210,11 @@ Shortest path to checking the claims above:
 
 ## Status and roadmap
 
-**Live:** contracts v3 on Arc mainnet, the invoice-first app, pay from Arc or Base, earnings with payout addresses and USDC → EURC, the treasury agent (on demand).
+**Live:** contracts v3 on Arc mainnet, the invoice-first app, pay from Arc or Base, earnings with payout addresses and USDC → EURC, the treasury agent on Claude Haiku 5.5 (on demand) with payment reminders.
 
 **Next:**
 
-- **Collections follow-up.** The agent drafts a reminder when an invoice is late and the team sends it through the channel they already use.
+- **Scheduled reminders.** Today a member asks for a reminder; next, the agent suggests one when an invoice has been open too long.
 - **Agent identity.** Move the agent's key to a Circle developer-controlled wallet and register it in Arc's ERC-8004 registry.
 - **More source chains** on the pay page through CCTP.
 - **Contributor reputation** built from settled invoices.
