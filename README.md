@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="web/public/icon-192.png" alt="Keyarc keystone logo" width="88" />
+
 # Keyarc
 
 **Your team's payment link, on Arc.**
