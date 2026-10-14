@@ -7,6 +7,8 @@ export interface Env {
   ANTHROPIC_API_KEY?: string;
   /** Comma-separated chest addresses this agent operates. */
   CHESTS: string;
+  /** Where the web app lives; pay links in reminders point here. */
+  APP_URL: string;
   /** Comma-separated origins allowed to call the HTTP API. */
   ALLOWED_ORIGINS: string;
 }

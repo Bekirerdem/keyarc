@@ -6,6 +6,7 @@ import type { Env } from "./env";
 import { ClaudeJudge, NoJudge, type Judge } from "./llm";
 import { listDecisions, saveDecision, seal } from "./log";
 import { getVendors, handleInvoiceEmail, putVendors, setInbox, type Vendor } from "./payables";
+import { draftReminder } from "./reminders";
 import { runTreasuryNote } from "./treasury";
 
 const judgeFor = (env: Env): Judge => (env.ANTHROPIC_API_KEY ? new ClaudeJudge(env.ANTHROPIC_API_KEY) : new NoJudge());
@@ -111,7 +112,9 @@ async function handleFetch(req: Request, env: Env): Promise<Response> {
   if (req.method === "POST" && url.pathname === "/invoice-note") {
     const body = (await req.json()) as { id?: string; note?: string };
     if (!isHex32(body.id) || typeof body.note !== "string") return json({ error: "id and note required" }, 400, h);
-    await setInvoiceNote(env, chest, body.id, body.note);
+    const result = await setInvoiceNote(env, chest, body.id, body.note);
+    if (result === "closed") return json({ error: "no open invoice with that id" }, 404, h);
+    if (result === "limit") return json({ error: "this invoice already has its notes" }, 429, h);
     return json({ ok: true }, 200, h);
   }
 
@@ -131,6 +134,15 @@ async function handleFetch(req: Request, env: Env): Promise<Response> {
       await setInbox(env, mailbox, chest);
       return json({ ok: true, mailbox }, 200, h);
     }
+    if (url.pathname === "/reminder") {
+      const { id, createdTx, lang } = auth.data;
+      if (!isHex32(id) || !isHex32(createdTx)) return json({ error: "id and createdTx required" }, 400, h);
+      try {
+        return json(await draftReminder(env, chest, id, createdTx, lang === "tr" ? "tr" : "en", judgeFor(env)), 200, h);
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : "could not draft" }, 400, h);
+      }
+    }
     if (url.pathname === "/run") {
       await cycle(env, chest, { forceNote: auth.data.note === true });
       return json({ ok: true }, 200, h);
@@ -146,5 +158,14 @@ export default {
   async email(message, env) {
     await handleInvoiceEmail(env, message, judgeFor(env));
   },
-  fetch: handleFetch,
+  async fetch(req, env) {
+    try {
+      return await handleFetch(req, env);
+    } catch (e) {
+      // a malformed body or an RPC hiccup answers as an error instead of an uncaught 1101
+      const bad = e instanceof SyntaxError;
+      if (!bad) console.error("[http]", e instanceof Error ? e.message : e);
+      return json({ error: bad ? "body must be JSON" : "agent error, try again" }, bad ? 400 : 500, cors(env, req));
+    }
+  },
 } satisfies ExportedHandler<Env>;

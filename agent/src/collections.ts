@@ -26,6 +26,7 @@ const cursorKey = (c: Address) => `cursor:${c.toLowerCase()}`;
 const pendingKey = (c: Address) => `pending:${c.toLowerCase()}`;
 const noteKey = (c: Address, id: Hex) => `invnote:${c.toLowerCase()}:${id.toLowerCase()}`;
 const statsKey = (c: Address) => `stats:${c.toLowerCase()}`;
+const openKey = (c: Address) => `open:${c.toLowerCase()}`;
 
 /** Running totals the treasury note reads, accumulated from the blocks the inflow scan already reads. */
 export type Stats = { since: number; income: string; expenses: string; paidOut: string; invoicesPaid: number; days: Record<string, { in: string; out: string }> };
@@ -34,22 +35,52 @@ export async function getStats(env: Env, chest: Address): Promise<Stats> {
   return JSON.parse((await env.AGENT_KV.get(statsKey(chest))) ?? `{"since":${Date.now()},"income":"0","expenses":"0","paidOut":"0","invoicesPaid":0,"days":{}}`) as Stats;
 }
 
+/** Workers Free allows 50 subrequests per invocation; two getLogs per chunk keeps a pass well under it. */
+const MAX_CHUNKS = 8n;
+
+type SavedInvoice = { id: Hex; amount: string; payer: Address; creator: Address; block: string };
+
+/** Open invoices, kept up to date from the chest events the inflow scan already reads (one KV key per chest). */
+async function getOpenIndex(env: Env, chest: Address): Promise<SavedInvoice[]> {
+  return JSON.parse((await env.AGENT_KV.get(openKey(chest))) ?? "[]") as SavedInvoice[];
+}
+
+/** Replays creation, payment and cancellation in order, so re-scanning the same blocks gives the same index. */
+export function applyInvoiceEvents(index: SavedInvoice[], events: { eventName: string; args: unknown; blockNumber: bigint }[]): SavedInvoice[] {
+  const open = new Map(index.map((i) => [i.id.toLowerCase(), i]));
+  for (const e of events) {
+    if (e.eventName === "InvoiceCreated") {
+      const a = e.args as { id: Hex; amount: bigint; payer: Address; creator: Address };
+      open.set(a.id.toLowerCase(), { id: a.id, amount: a.amount.toString(), payer: a.payer, creator: a.creator, block: e.blockNumber.toString() });
+    } else if (e.eventName === "InvoicePaid" || e.eventName === "InvoiceCancelled") {
+      open.delete((e.args as { id: Hex }).id.toLowerCase());
+    }
+  }
+  return [...open.values()];
+}
+
 /** USDC that reached the chest outside payInvoice (CCTP mints, plain transfers, x402 settlements). */
 export async function findInflows(env: Env, chest: Address): Promise<Inflow[]> {
   const head = await publicClient.getBlockNumber();
   const saved = await env.AGENT_KV.get(cursorKey(chest));
   let from = saved ? BigInt(saved) + 1n : head - CHUNK * 4n; // first run: look back ~1.5h
+  // a pass reads at most MAX_CHUNKS; when the agent has been idle it catches up over the next passes
+  const cap = from + (CHUNK + 1n) * MAX_CHUNKS - 1n;
+  const end = cap < head ? cap : head;
   const found: Inflow[] = [];
   const stats = await getStats(env, chest);
   const statsBefore = JSON.stringify(stats);
-  while (from <= head) {
-    const to = from + CHUNK > head ? head : from + CHUNK;
+  const indexBefore = JSON.stringify(await getOpenIndex(env, chest));
+  let index = JSON.parse(indexBefore) as SavedInvoice[];
+  while (from <= end) {
+    const to = from + CHUNK > end ? end : from + CHUNK;
     const [transfers, events] = await Promise.all([
       publicClient.getLogs({ address: [USDC, SYSTEM_EMITTER], event: transferEvent, args: { to: chest }, fromBlock: from, toBlock: to }),
       publicClient.getContractEvents({ address: chest, abi: collectiveAbi, fromBlock: from, toBlock: to }),
     ]);
     const invoiceTxs = new Set(events.filter((e) => e.eventName === "InvoicePaid").map((p) => p.transactionHash));
     tally(stats, events);
+    index = applyInvoiceEvents(index, events);
     const seen = new Set<string>();
     for (const t of transfers) {
       if (invoiceTxs.has(t.transactionHash) || t.args.from?.toLowerCase() === chest.toLowerCase()) continue;
@@ -61,12 +92,14 @@ export async function findInflows(env: Env, chest: Address): Promise<Inflow[]> {
     }
     from = to + 1n;
   }
-  // Free-plan KV allows 1,000 writes a day and this runs every 5 minutes, so write only what changed.
+  // Free-plan KV allows 1,000 writes a day, so write only what changed.
   // A quiet cursor is kept for up to ~1h of blocks: re-scanning a few chunks costs reads, not writes.
   const statsNow = JSON.stringify(stats);
-  const quiet = found.length === 0 && statsNow === statsBefore;
-  if (!quiet || !saved || head - BigInt(saved) > CURSOR_SLACK) await env.AGENT_KV.put(cursorKey(chest), head.toString());
+  const indexNow = JSON.stringify(index);
+  const quiet = found.length === 0 && statsNow === statsBefore && indexNow === indexBefore;
+  if (!quiet || !saved || end - BigInt(saved) > CURSOR_SLACK) await env.AGENT_KV.put(cursorKey(chest), end.toString());
   if (statsNow !== statsBefore) await env.AGENT_KV.put(statsKey(chest), statsNow);
+  if (indexNow !== indexBefore) await env.AGENT_KV.put(openKey(chest), indexNow);
   const pending = JSON.parse((await env.AGENT_KV.get(pendingKey(chest))) ?? "[]") as { tx: Hex; from: Address; amount: string; block: string; seen?: number }[];
   const known = new Set(pending.map((p) => p.tx));
   return [
@@ -81,28 +114,32 @@ async function savePending(env: Env, chest: Address, list: Inflow[]) {
   await env.AGENT_KV.put(pendingKey(chest), next);
 }
 
-async function openInvoices(chest: Address): Promise<OpenInvoice[]> {
-  const head = await publicClient.getBlockNumber();
-  const fromBlock = head > 200_000n ? head - 200_000n : 0n; // ~3 days on Arc
-  const open = new Map<Hex, OpenInvoice>();
-  for (let from = fromBlock; from <= head; from += CHUNK + 1n) {
-    const to = from + CHUNK > head ? head : from + CHUNK;
-    const events = await publicClient.getContractEvents({ address: chest, abi: collectiveAbi, fromBlock: from, toBlock: to });
-    for (const e of events) {
-      if (e.eventName === "InvoiceCreated") {
-        const a = e.args as { id: Hex; amount: bigint; payer: Address; creator: Address };
-        open.set(a.id, { id: a.id, amount: a.amount, payer: a.payer, creator: a.creator, block: e.blockNumber });
-      } else if (e.eventName === "InvoicePaid" || e.eventName === "InvoiceCancelled") {
-        open.delete((e.args as { id: Hex }).id);
-      }
-    }
-  }
-  return [...open.values()];
+async function openInvoices(env: Env, chest: Address): Promise<OpenInvoice[]> {
+  return (await getOpenIndex(env, chest)).map((i) => ({ ...i, amount: BigInt(i.amount), block: BigInt(i.block) }));
 }
 
-/** Optional context the pay page leaves for an invoice ("paying from Base, ref ACME-12"). */
-export async function setInvoiceNote(env: Env, chest: Address, id: Hex, note: string) {
-  await env.AGENT_KV.put(noteKey(chest, id), note.slice(0, 280), { expirationTtl: 60 * 60 * 24 * 30 });
+/** Writes per invoice: the job name from the bill page plus a pay-from-Base note leaves room for one retry. */
+const NOTE_WRITES = 3;
+
+/**
+ * Optional context the bill and pay pages leave for an invoice ("Website upkeep · October", "paid from Base, burn tx …").
+ * Unsigned, because the client writes it too, so it is limited to open invoices of this chest and a few writes each:
+ * free-plan KV allows 1,000 writes a day and an open endpoint must not be able to spend them.
+ */
+export async function setInvoiceNote(env: Env, chest: Address, id: Hex, note: string): Promise<"ok" | "unchanged" | "closed" | "limit"> {
+  const [, , , status] = await publicClient.readContract({ address: chest, abi: collectiveAbi, functionName: "invoice", args: [id] });
+  if (status !== 1) return "closed";
+  const text = note.slice(0, 280);
+  const saved = await env.AGENT_KV.getWithMetadata<{ n?: number }>(noteKey(chest, id));
+  if (saved.value === text) return "unchanged";
+  const n = saved.metadata?.n ?? (saved.value === null ? 0 : 1);
+  if (n >= NOTE_WRITES) return "limit";
+  await env.AGENT_KV.put(noteKey(chest, id), text, { expirationTtl: 60 * 60 * 24 * 30, metadata: { n: n + 1 } });
+  return "ok";
+}
+
+export async function getInvoiceNote(env: Env, chest: Address, id: Hex): Promise<string> {
+  return (await env.AGENT_KV.get(noteKey(chest, id))) ?? "";
 }
 
 /**
@@ -113,7 +150,7 @@ export async function runCollections(env: Env, chest: Address, judge: Judge) {
   const inflows = await findInflows(env, chest);
   if (inflows.length === 0) return;
   const state = await readChest(chest);
-  const invoices = await openInvoices(chest);
+  const invoices = await openInvoices(env, chest);
   const { account, wallet } = agentWallet(env);
   const stillPending: Inflow[] = [];
 
