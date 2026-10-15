@@ -13,7 +13,7 @@ and everyone is paid by the shares written on the invoice. Rules change only by 
 
 ![Arc mainnet](https://img.shields.io/badge/Arc-mainnet%20·%20chain%205042-1d1a16)
 ![Contract tests](https://img.shields.io/badge/contract%20tests-72%20passing-1f6d3a)
-![Agent tests](https://img.shields.io/badge/agent%20tests-20%20passing-1f6d3a)
+![Agent tests](https://img.shields.io/badge/agent%20tests-23%20passing-1f6d3a)
 ![Model](https://img.shields.io/badge/agent%20model-Claude%20Haiku%205.5-b5651d)
 ![License](https://img.shields.io/badge/license-MIT-c9331f)
 

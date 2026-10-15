@@ -3,7 +3,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
-  "triggers": { "crons": [] }, // paused until a real team uses it; /run still works on demand
+  "triggers": { "crons": ["* * * * *"] }, // one managed chest per minute, in turn (see scheduled in src/index.ts)
   "kv_namespaces": [{ "binding": "AGENT_KV", "id": "0106e2622ddd4bd4b0be4b972d97e6f0" }],
   "vars": {
     "CHESTS": "0xd612E26C268375d7ec80FeC3c35623Db9E58aa2c",

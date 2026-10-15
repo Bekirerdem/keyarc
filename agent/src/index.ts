@@ -5,13 +5,36 @@ import { runCollections, setInvoiceNote } from "./collections";
 import type { Env } from "./env";
 import { ClaudeJudge, NoJudge, type Judge } from "./llm";
 import { listDecisions, saveDecision, seal } from "./log";
-import { chestLogs, NotAChest } from "./logindex";
+import { chestLogs, isKeyarcClone, NotAChest } from "./logindex";
 import { getVendors, handleInvoiceEmail, putVendors, setInbox, type Vendor } from "./payables";
 import { draftReminder } from "./reminders";
 import { runTreasuryNote } from "./treasury";
 
 const judgeFor = (env: Env): Judge => (env.ANTHROPIC_API_KEY ? new ClaudeJudge(env.ANTHROPIC_API_KEY) : new NoJudge());
 const chestsOf = (env: Env): Address[] => env.CHESTS.split(",").map((c) => c.trim()).filter((c) => isAddress(c)).map((c) => getAddress(c));
+const REGISTRY = "managed";
+
+/** Chests in CHESTS plus every chest that named this agent when it was opened. */
+async function managedChests(env: Env): Promise<Address[]> {
+  const joined = JSON.parse((await env.AGENT_KV.get(REGISTRY)) ?? "[]") as Address[];
+  return [...new Set([...chestsOf(env), ...joined])];
+}
+
+/**
+ * "Let the treasury agent collect for us" on the bill page writes this agent's address into the new chest.
+ * The first request about such a chest registers it, so the agent runs it without a redeploy.
+ */
+async function isManaged(env: Env, chest: Address): Promise<boolean> {
+  if ((await managedChests(env)).includes(chest)) return true;
+  const [code, agent] = await Promise.all([
+    publicClient.getCode({ address: chest }),
+    publicClient.readContract({ address: chest, abi: collectiveAbi, functionName: "agent" }).catch(() => null),
+  ]);
+  if (!code || !isKeyarcClone(code) || !agent || getAddress(agent) !== agentWallet(env).account.address) return false;
+  const joined = JSON.parse((await env.AGENT_KV.get(REGISTRY)) ?? "[]") as Address[];
+  await env.AGENT_KV.put(REGISTRY, JSON.stringify([...joined, chest].slice(-200)));
+  return true;
+}
 
 /** One pass over a chest. Each step is isolated so one failure doesn't stop the others. */
 async function cycle(env: Env, chest: Address, opts: { forceNote?: boolean } = {}) {
@@ -95,7 +118,7 @@ async function handleFetch(req: Request, env: Env): Promise<Response> {
   const chestParam = url.searchParams.get("chest") ?? "";
   if (!isAddress(chestParam)) return json({ error: "chest address required" }, 400, h);
   const chest = getAddress(chestParam);
-  const managed = chestsOf(env).some((c) => c === chest);
+  const managed = await isManaged(env, chest);
 
   if (req.method === "GET" && url.pathname === "/decisions") {
     return json({ agent: agentWallet(env).account.address, managed, model: judgeFor(env).name, decisions: await listDecisions(env, chest) }, 200, h);
@@ -161,8 +184,11 @@ async function handleFetch(req: Request, env: Env): Promise<Response> {
 }
 
 export default {
-  async scheduled(_event, env, ctx) {
-    for (const chest of chestsOf(env)) ctx.waitUntil(cycle(env, chest));
+  async scheduled(event, env, ctx) {
+    // One chest per run: every subrequest of a run counts against the same 50, so chests take turns by the minute.
+    const chests = await managedChests(env);
+    if (chests.length === 0) return;
+    ctx.waitUntil(cycle(env, chests[Math.floor(event.scheduledTime / 60_000) % chests.length]));
   },
   async email(message, env) {
     await handleInvoiceEmail(env, message, judgeFor(env));

@@ -3,6 +3,7 @@ import { USDC, agentWallet, collectiveAbi, publicClient, readChest } from "./cha
 import type { Env } from "./env";
 import type { Judge } from "./llm";
 import { saveDecision, seal, type Check } from "./log";
+import { decodeStored, storedLogs } from "./logindex";
 
 const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const CHUNK = 900n; // smallest eth_getLogs range the relay providers accept
@@ -37,6 +38,8 @@ export async function getStats(env: Env, chest: Address): Promise<Stats> {
 
 /** Workers Free allows 50 subrequests per invocation; two getLogs per chunk keeps a pass well under it. */
 const MAX_CHUNKS = 8n;
+/** Further behind than a few passes can close: take the gap from the log index instead. */
+const IDLE = (CHUNK + 1n) * MAX_CHUNKS * 3n;
 
 type SavedInvoice = { id: Hex; amount: string; payer: Address; creator: Address; block: string };
 
@@ -64,14 +67,27 @@ export async function findInflows(env: Env, chest: Address): Promise<Inflow[]> {
   const head = await publicClient.getBlockNumber();
   const saved = await env.AGENT_KV.get(cursorKey(chest));
   let from = saved ? BigInt(saved) + 1n : head - CHUNK * 4n; // first run: look back ~1.5h
-  // a pass reads at most MAX_CHUNKS; when the agent has been idle it catches up over the next passes
-  const cap = from + (CHUNK + 1n) * MAX_CHUNKS - 1n;
-  const end = cap < head ? cap : head;
-  const found: Inflow[] = [];
   const stats = await getStats(env, chest);
   const statsBefore = JSON.stringify(stats);
   const indexBefore = JSON.stringify(await getOpenIndex(env, chest));
   let index = JSON.parse(indexBefore) as SavedInvoice[];
+  // A new chest, or one the agent left idle: the log index (filled whenever the chest page opens) already holds
+  // every chest event, so the open invoices are rebuilt from it and the scan resumes where it ends. USDC inflows in
+  // the skipped blocks are not judged; pay-link payments are on chain already and members see the rest.
+  if (!saved || head - from > IDLE) {
+    const stored = await storedLogs(env, chest);
+    if (stored && BigInt(stored.to) >= from) {
+      const since = saved ? from : 0n;
+      const gap = decodeStored(chest, stored.logs).filter((e) => e.blockNumber >= since);
+      tally(stats, gap);
+      index = applyInvoiceEvents(index, gap);
+      from = BigInt(stored.to) + 1n;
+    }
+  }
+  // a pass reads at most MAX_CHUNKS; when the agent has been idle it catches up over the next passes
+  const cap = from + (CHUNK + 1n) * MAX_CHUNKS - 1n;
+  const end = cap < head ? cap : head;
+  const found: Inflow[] = [];
   while (from <= end) {
     const to = from + CHUNK > end ? end : from + CHUNK;
     const [transfers, events] = await Promise.all([

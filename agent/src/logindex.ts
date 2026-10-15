@@ -1,4 +1,5 @@
-import type { Address, Hex } from "viem";
+import { parseEventLogs, type Address, type Hex } from "viem";
+import { collectiveAbi } from "./chain";
 import type { Env } from "./env";
 
 // A chest's whole event history, indexed once and kept in KV, so the app reads it in one request.
@@ -24,7 +25,7 @@ const IMPLEMENTATIONS = [
 ];
 
 export type StoredLog = { blockNumber: string; transactionHash: Hex; logIndex: number; data: Hex; topics: Hex[] };
-type Index = { from: string; to: string; logs: StoredLog[] };
+export type Index = { from: string; to: string; logs: StoredLog[] };
 type RawLog = { blockNumber: Hex; transactionHash: Hex; logIndex: Hex; data: Hex; topics: Hex[] };
 type Call = { method: string; params: unknown[] };
 type Budget = { left: number };
@@ -33,6 +34,25 @@ export class NotAChest extends Error {}
 
 const hex = (n: bigint) => `0x${n.toString(16)}`;
 const key = (c: Address) => `logs:${c.toLowerCase()}`;
+
+/** What the index holds for a chest, without touching the chain (the chest page fills it on every visit). */
+export const storedLogs = (env: Env, chest: Address) => env.AGENT_KV.get<Index>(key(chest), "json");
+
+/** Stored logs as chest events, the same shape getContractEvents returns. */
+export function decodeStored(chest: Address, logs: StoredLog[]) {
+  const raw = logs.map((l) => ({
+    address: chest,
+    blockHash: null,
+    blockNumber: BigInt(l.blockNumber),
+    data: l.data,
+    logIndex: l.logIndex,
+    removed: false,
+    topics: l.topics as [Hex, ...Hex[]],
+    transactionHash: l.transactionHash,
+    transactionIndex: null,
+  }));
+  return parseEventLogs({ abi: collectiveAbi, logs: raw as never, strict: false });
+}
 
 export const isKeyarcClone = (code: string) => {
   const c = code.toLowerCase();
