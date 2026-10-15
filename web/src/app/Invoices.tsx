@@ -11,7 +11,7 @@ import { useTx } from "../lib/tx";
 import type { Chest, Invoice } from "./useChest";
 import { OnArc } from "./Wallet";
 
-export function Invoices({ chest, invoices, isMember, onChange }: { chest: Chest; invoices: Invoice[]; isMember: boolean; onChange: () => void }) {
+export function Invoices({ chest, invoices, loading, isMember, onChange }: { chest: Chest; invoices: Invoice[]; loading: boolean; isMember: boolean; onChange: () => void }) {
   const [open, setOpen] = useState(false);
   const [reminding, setReminding] = useState<Hex | null>(null);
   const { t } = useLang();
@@ -25,7 +25,9 @@ export function Invoices({ chest, invoices, isMember, onChange }: { chest: Chest
         {isMember && <button className="btn small" onClick={() => setOpen(!open)}>{open ? t("inv.close") : t("inv.new")}</button>}
       </div>
       {open && <NewInvoice chest={chest} onDone={() => { setOpen(false); onChange(); }} />}
-      {invoices.length === 0 ? (
+      {loading ? (
+        <div className="skeleton" style={{ marginTop: 14, height: 60 }} />
+      ) : invoices.length === 0 ? (
         <p className="note muted" style={{ marginTop: 14 }}>{t("inv.none")}</p>
       ) : (
         <table className="simple" style={{ marginTop: 14 }}>

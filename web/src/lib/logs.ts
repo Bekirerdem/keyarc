@@ -1,6 +1,7 @@
 import { parseEventLogs, type Address, type Log } from "viem";
 import { publicClient } from "./arc";
 import { collectiveAbi } from "./abi";
+import { AGENT_URL } from "./agent";
 
 // Providers cap eth_getLogs ranges differently (Arc ~5k, thirdweb 1k, dRPC free tier lower still), so stay
 // under the smallest cap; the local cache means only new blocks are scanned on later visits.
@@ -48,8 +49,30 @@ export async function creationBlock(a: Address): Promise<bigint> {
   return lo;
 }
 
-/** All logs emitted by a collective, decoded, oldest first. Incremental: only new blocks are fetched. */
+/** The agent keeps every chest's history indexed; on a chest it hasn't seen in a while, a few calls catch it up. */
+async function fromIndex(a: Address): Promise<SerializedLog[]> {
+  for (let i = 0; i < 12; i++) {
+    const r = await fetch(`${AGENT_URL}/logs?chest=${a}`);
+    if (!r.ok) throw new Error(`log index answered ${r.status}`);
+    const body = (await r.json()) as { done: boolean; logs: SerializedLog[] };
+    if (body.done) return body.logs;
+  }
+  throw new Error("log index is still catching up");
+}
+
+/** All logs emitted by a collective, decoded, oldest first: from the agent's index, or scanned here if it's down. */
 export async function collectiveLogs(a: Address) {
+  let raw: SerializedLog[];
+  try {
+    raw = await fromIndex(a);
+  } catch {
+    raw = await scan(a);
+  }
+  return decode(a, raw);
+}
+
+/** Fallback scan from this browser. Incremental: only new blocks are fetched. */
+async function scan(a: Address): Promise<SerializedLog[]> {
   const head = await publicClient.getBlockNumber();
   const cached = load(a);
   let from = cached ? BigInt(cached.to) + 1n : await creationBlock(a);
@@ -72,7 +95,10 @@ export async function collectiveLogs(a: Address) {
     }
   }
   save(a, { from: start.toString(), to: head.toString(), logs: raw });
+  return raw;
+}
 
+function decode(a: Address, raw: SerializedLog[]) {
   const asLogs = raw.map((r) => ({
     address: a,
     blockHash: null,

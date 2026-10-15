@@ -85,7 +85,7 @@ export default function Chest() {
           {!isMember && c && <p className="hint" style={{ marginTop: 8 }}>{t("chest.lookingIn")}</p>}
         </div>
         {c ? <Period chest={c} isMember={isMember} onChange={refresh} /> : <div className="card"><div className="skeleton" style={{ height: 160 }} /></div>}
-        {c && <Invoices chest={c} invoices={invoices} isMember={isMember} onChange={refresh} />}
+        {c && <Invoices chest={c} invoices={invoices} loading={events.isLoading} isMember={isMember} onChange={refresh} />}
         {c && <AgentPanel chest={c} isMember={isMember} onChange={refresh} />}
       </main>
 

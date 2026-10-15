@@ -5,6 +5,7 @@ import { runCollections, setInvoiceNote } from "./collections";
 import type { Env } from "./env";
 import { ClaudeJudge, NoJudge, type Judge } from "./llm";
 import { listDecisions, saveDecision, seal } from "./log";
+import { chestLogs, NotAChest } from "./logindex";
 import { getVendors, handleInvoiceEmail, putVendors, setInbox, type Vendor } from "./payables";
 import { draftReminder } from "./reminders";
 import { runTreasuryNote } from "./treasury";
@@ -100,6 +101,14 @@ async function handleFetch(req: Request, env: Env): Promise<Response> {
     return json({ agent: agentWallet(env).account.address, managed, model: judgeFor(env).name, decisions: await listDecisions(env, chest) }, 200, h);
   }
   if (req.method === "GET" && url.pathname === "/vendors") return json({ vendors: await getVendors(env, chest) }, 200, h);
+  if (req.method === "GET" && url.pathname === "/logs") {
+    try {
+      return json(await chestLogs(env, chest), 200, { ...h, "cache-control": "no-store" });
+    } catch (e) {
+      if (e instanceof NotAChest) return json({ error: e.message }, 404, h);
+      throw e;
+    }
+  }
   if (!managed) return json({ error: "this agent does not operate that chest" }, 404, h);
 
   if (req.method === "POST" && url.pathname === "/cctp") {
