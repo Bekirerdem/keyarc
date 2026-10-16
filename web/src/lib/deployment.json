@@ -2,33 +2,39 @@
   "chainId": 5042,
   "usdc": "0x3600000000000000000000000000000000000000",
   "memo": "0x5294E9927c3306DcBaDb03fe70b92e01cCede505",
-  "factory": "0x295F88F793E38eB8be6684b13e02799aADAEd0d9",
-  "implementation": "0x95aAa5594942912D4d5011d64f876069F2D37CC9",
+  "factory": "0x8FFAa9227Ab19456bb5a4fCf51C1515f7906a811",
+  "implementation": "0x46561f701bc73c914BcdD1Fb58E307DcC5258278",
   "deployer": "0x4Ec4338211a803c00e592daAa62F2Ea79C86e51d",
-  "deployedAt": "2026-10-12",
-  "version": "v3",
+  "deployedAt": "2026-10-16",
+  "version": "v4",
   "proof": {
-    "collective": "0x1Bbe31a437C1B591895cBC4f3F3A25d336Ac5203",
+    "collective": "0x09987bc4Ac66992935bDb8B9ff2A7A7F0980F318",
     "members": [
       "0x4Ec4338211a803c00e592daAa62F2Ea79C86e51d",
-      "0x39AEfbC8388da12907A21d9De888B288a9fa5794"
+      "0xb568E465AF0116447F0c7c39bBecfaB2DB172CcD"
     ],
-    "createTx": "0x750c70d72b9f5fee4a61afa51284b41407b6cef408776f054be000dd2f1b892c",
-    "invoiceId": "0x296db0bb48f14907df8363fc7e99b824bbd005cb911cf1601f70c16d5c2ebaac",
-    "createInvoiceTx": "0x398eed39f2a562af0fd43244639d7c35ed77d90f9606f7495825d157a082c660",
-    "approveTx": "0x679933d5a133a65cafcb7bce1df5347efbdc090d471cd4eb586c505c9035c694",
-    "payViaMemoTx": "0xbec040d84d34bbc620e1ed11206714d6b9d2d210b1acaeb5268f7e6663b104f8",
-    "distributeTx": "0xe6b7fe088db8af9b06c42567b4d55b0336e9054ac18f22c38ed1e5b9c7e84c1c"
+    "createTx": "0x26f4ad874d12cf411ecb0683d4ec84407377b4ef74295d42432550ad3ad471d6",
+    "invoiceId": "0x0747e39ea504a27dcd2a0a44d1ebaed1be994fdc123e218596591d66310dfeae",
+    "createInvoiceTx": "0xdeae1a5d2a7ac0b5165b4a71742a8389fa8c418c5a0379edf85bdf89b156dc8e",
+    "agreeBySignatureTx": "0xc2690d60ecb4a91a2096172afb950ce412df6278f364341afae26eb120ef06a5",
+    "approveTx": "0x618242d9d9331ee7874d7a4e6d2de0ee997e9c8763bf4d3a60650a91d34b8c35",
+    "payViaMemoTx": "0xc55fed847bbfc1854c56a654071d0b7803dbabf2a85f35771ddb3e5fdea29fe6",
+    "paidOut": [
+      "0x4Ec4338211a803c00e592daAa62F2Ea79C86e51d: 0.063 USDC",
+      "0xb568E465AF0116447F0c7c39bBecfaB2DB172CcD: 0.027 USDC"
+    ]
   },
   "demo": {
-    "collective": "0xd612E26C268375d7ec80FeC3c35623Db9E58aa2c",
+    "collective": "0xd5e487c52C504903cf89121f2BBC01D938a3c4B4",
     "name": "Keyarc Studio",
     "members": [
       "0x39AEfbC8388da12907A21d9De888B288a9fa5794",
       "0x4Ec4338211a803c00e592daAa62F2Ea79C86e51d"
     ],
     "agent": "0xBB682c02E3429d808499c1Ec5414b34113A21017",
-    "createTx": "0x4e05c40b90b3c2a00801db601ebf6fe1513669e30b4ec9b2a58ef1c17a3ef4ab"
+    "createTx": "0x2ffe0076210a1d75650e719e4e8d6210a3647230337115e6566d1c15173cc640",
+    "invoiceId": "0x9ea75918b337f4787b9524b5d777affaa0875dab5ebbdd95514900fe81c192a1",
+    "createInvoiceTx": "0xd9cc8c5bb4e0fab18b8f8070863538d963d296670754d711621b7a026d27bb7b"
   },
   "v3": {
     "factory": "0x295F88F793E38eB8be6684b13e02799aADAEd0d9",

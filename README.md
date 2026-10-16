@@ -9,7 +9,7 @@
 Clients pay one link. Everyone on the invoice agrees to their share first,<br/>
 and when the money lands each share goes straight to its owner's wallet, in the same transaction.
 
-[**Live app**](https://keyarc.app) · [Demo team](https://keyarc.app/c/DEMO_V4) · [Contracts](contracts/src) · [Agent](agent/src) · [Mainnet addresses](deployments/arc-mainnet.json)
+[**Live app**](https://keyarc.app) · [Demo team](https://keyarc.app/c/0xd5e487c52C504903cf89121f2BBC01D938a3c4B4) · [Contracts](contracts/src) · [Agent](agent/src) · [Mainnet addresses](deployments/arc-mainnet.json)
 
 ![Arc mainnet](https://img.shields.io/badge/Arc-mainnet%20·%20chain%205042-1d1a16)
 ![Contract tests](https://img.shields.io/badge/contract%20tests-93%20passing-1f6d3a)
@@ -125,17 +125,17 @@ Every decision is stored with its facts, each check and its result, the model's 
 
 | | Address |
 |---|---|
-| CollectiveFactory (v4) | [`FACTORY_V4`](https://explorer.arc.io/address/FACTORY_V4) |
-| Collective implementation (v4) | [`IMPL_V4`](https://explorer.arc.io/address/IMPL_V4) |
-| Demo team · Keyarc Studio | [`DEMO_V4`](https://explorer.arc.io/address/DEMO_V4) |
+| CollectiveFactory (v4) | [`0x8FFAa9227Ab19456bb5a4fCf51C1515f7906a811`](https://explorer.arc.io/address/0x8FFAa9227Ab19456bb5a4fCf51C1515f7906a811) |
+| Collective implementation (v4) | [`0x46561f701bc73c914BcdD1Fb58E307DcC5258278`](https://explorer.arc.io/address/0x46561f701bc73c914BcdD1Fb58E307DcC5258278) |
+| Demo team · Keyarc Studio | [`0xd5e487c52C504903cf89121f2BBC01D938a3c4B4`](https://explorer.arc.io/address/0xd5e487c52C504903cf89121f2BBC01D938a3c4B4) |
 | Treasury agent | [`0xBB682c02E3429d808499c1Ec5414b34113A21017`](https://explorer.arc.io/address/0xBB682c02E3429d808499c1Ec5414b34113A21017) |
 | USDC → EURC router (Uniswap) | [`0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77`](https://explorer.arc.io/address/0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77) |
 
-**End-to-end proof on mainnet** (proof chest [`PROOF_V4`](https://explorer.arc.io/address/PROOF_V4), reproducible with [`agent/scripts/mainnet-setup.ts`](agent/scripts/mainnet-setup.ts)):
+**End-to-end proof on mainnet** (proof chest [`0x09987bc4Ac66992935bDb8B9ff2A7A7F0980F318`](https://explorer.arc.io/address/0x09987bc4Ac66992935bDb8B9ff2A7A7F0980F318), reproducible with [`agent/scripts/mainnet-setup.ts`](agent/scripts/mainnet-setup.ts)):
 
-1. A 0.10 USDC invoice is written for two people, 70 / 30 ([tx](https://explorer.arc.io/tx/PROOF_INVOICE_TX)).
-2. The second person agrees by signature; someone else submits it ([tx](https://explorer.arc.io/tx/PROOF_AGREE_TX)).
-3. The client pays through Arc Memo, and in that same transaction 0.01 USDC goes to shared costs, 0.063 and 0.027 USDC to the two wallets ([tx](https://explorer.arc.io/tx/PROOF_PAY_TX)).
+1. A 0.10 USDC invoice is written for two people, 70 / 30 ([tx](https://explorer.arc.io/tx/0xdeae1a5d2a7ac0b5165b4a71742a8389fa8c418c5a0379edf85bdf89b156dc8e)).
+2. The second person agrees by signature; someone else submits it ([tx](https://explorer.arc.io/tx/0xc2690d60ecb4a91a2096172afb950ce412df6278f364341afae26eb120ef06a5)).
+3. The client pays through Arc Memo, and in that same transaction 0.01 USDC goes to shared costs, 0.063 and 0.027 USDC to the two wallets ([tx](https://explorer.arc.io/tx/0xc55fed847bbfc1854c56a654071d0b7803dbabf2a85f35771ddb3e5fdea29fe6)).
 4. A member converts 0.10 USDC to 0.089163 EURC on Arc ([swap tx](https://explorer.arc.io/tx/0xcd1ed40e2d8604a400f5cfe02b9d334febafad3e13bc306005f3092038a44fd4)).
 
 Earlier versions (v1 to v3) and every hash are in [`deployments/arc-mainnet.json`](deployments/arc-mainnet.json). The demo team's members are the author's own wallets; it is a demonstration, not customer activity.
