@@ -92,6 +92,7 @@ defineStrings({
   "inv.payLink": ["pay link ↗", "ödeme linki ↗"],
   "inv.waiting": ["waiting for {n} to agree", "{n} kişinin onayı bekleniyor"],
   "inv.due": ["due {date}", "son gün {date}"],
+  "inv.lateToday": ["late · was due {date}", "gecikti · son gün {date}"],
   "inv.late": ["{n} day(s) late · was due {date}", "{n} gün gecikti · son gün {date}"],
   "inv.remind": ["remind", "hatırlat"],
   "inv.remind.why": [

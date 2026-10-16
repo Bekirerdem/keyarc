@@ -19,7 +19,10 @@ export function useDue() {
     if (!inv.dueAt || inv.status !== 1) return null;
     const now = Math.floor(Date.now() / 1000);
     const date = new Date(inv.dueAt * 1000).toLocaleDateString(lang === "tr" ? "tr-TR" : "en-GB", { day: "numeric", month: "short" });
-    if (now > inv.dueAt) return { late: true, text: t("inv.late", { n: Math.max(1, Math.floor((now - inv.dueAt) / DAY)), date }) };
+    if (now > inv.dueAt) {
+      const n = Math.floor((now - inv.dueAt) / DAY);
+      return { late: true, text: n < 1 ? t("inv.lateToday", { date }) : t("inv.late", { n, date }) };
+    }
     return { late: false, text: t("inv.due", { date }) };
   };
 }
