@@ -51,3 +51,14 @@ createRoot(document.getElementById("root")!).render(
     </WagmiProvider>
   </StrictMode>,
 );
+
+// A returning visitor first gets the cached app; when the new deploy's service worker takes over, reload once
+// so nobody keeps running an old build against new contracts. A first visit (no previous worker) never reloads.
+if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloaded) return;
+    reloaded = true;
+    window.location.reload();
+  });
+}
