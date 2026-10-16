@@ -6,6 +6,7 @@
   "implementation": "0x95aAa5594942912D4d5011d64f876069F2D37CC9",
   "deployer": "0x4Ec4338211a803c00e592daAa62F2Ea79C86e51d",
   "deployedAt": "2026-10-12",
+  "version": "v3",
   "proof": {
     "collective": "0x1Bbe31a437C1B591895cBC4f3F3A25d336Ac5203",
     "members": [
@@ -19,12 +20,6 @@
     "payViaMemoTx": "0xbec040d84d34bbc620e1ed11206714d6b9d2d210b1acaeb5268f7e6663b104f8",
     "distributeTx": "0xe6b7fe088db8af9b06c42567b4d55b0336e9054ac18f22c38ed1e5b9c7e84c1c"
   },
-  "v1": {
-    "factory": "0x8e4BB9741D40C4A48EF626f2195AF99D48eb0CC2",
-    "implementation": "0x8af27fa90b013D2Ec01404C7BcCB882d27514061",
-    "deployedAt": "2026-10-09"
-  },
-  "version": "v3",
   "demo": {
     "collective": "0xd612E26C268375d7ec80FeC3c35623Db9E58aa2c",
     "name": "Keyarc Studio",
@@ -33,22 +28,27 @@
       "0x4Ec4338211a803c00e592daAa62F2Ea79C86e51d"
     ],
     "agent": "0xBB682c02E3429d808499c1Ec5414b34113A21017",
-    "createTx": "0x4e05c40b90b3c2a00801db601ebf6fe1513669e30b4ec9b2a58ef1c17a3ef4ab",
-    "rules": {
-      "reserveBps": 1000,
-      "reserveTarget": "5 USDC",
-      "autoAttributeCap": "5 USDC",
-      "expenseCapPerPeriod": "2 USDC",
-      "quorumBps": 6000,
-      "timelock": "1h",
-      "period": "7d"
-    }
+    "createTx": "0x4e05c40b90b3c2a00801db601ebf6fe1513669e30b4ec9b2a58ef1c17a3ef4ab"
+  },
+  "v3": {
+    "factory": "0x295F88F793E38eB8be6684b13e02799aADAEd0d9",
+    "implementation": "0x95aAa5594942912D4d5011d64f876069F2D37CC9",
+    "demoChest": "0xd612E26C268375d7ec80FeC3c35623Db9E58aa2c",
+    "proofChest": "0x1Bbe31a437C1B591895cBC4f3F3A25d336Ac5203",
+    "proofPayViaMemoTx": "0xbec040d84d34bbc620e1ed11206714d6b9d2d210b1acaeb5268f7e6663b104f8",
+    "proofDistributeTx": "0xe6b7fe088db8af9b06c42567b4d55b0336e9054ac18f22c38ed1e5b9c7e84c1c",
+    "deployedAt": "2026-10-12"
   },
   "v2": {
     "factory": "0xA5B4cAD4f05371EDbb169CAe63F2eFB7Ee4752BA",
     "implementation": "0xf14A2B78518e2BC92E085B4249b67a00AabCAb24",
     "demoChest": "0xD08F601db4dF673525B95E98985a8049774aae91",
     "deployedAt": "2026-10-10"
+  },
+  "v1": {
+    "factory": "0x8e4BB9741D40C4A48EF626f2195AF99D48eb0CC2",
+    "implementation": "0x8af27fa90b013D2Ec01404C7BcCB882d27514061",
+    "deployedAt": "2026-10-09"
   },
   "fx": {
     "router": "0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77",

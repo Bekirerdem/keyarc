@@ -1,5 +1,4 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { isAddress, type Address } from "viem";
 import { useConnection } from "wagmi";
@@ -8,21 +7,13 @@ import { explorerAddress, explorerTx } from "../lib/arc";
 import { pct, short, usdc } from "../lib/format";
 import { useDuration, useLang } from "../lib/i18n";
 import type { CollectiveEvent } from "../lib/logs";
+import { useNames } from "../lib/team";
 import { useTx } from "../lib/tx";
 import { AgentPanel } from "./Agent";
 import { Invoices } from "./Invoices";
-import { invoicesFrom, useChest, useChestEvents, type Chest as ChestT } from "./useChest";
+import { invoicesFrom, OlderChest, paidByMember, useChest, useChestEvents, type Chest as ChestT } from "./useChest";
 import { Votes } from "./Votes";
 import { Brand, OnArc, Wallet } from "./Wallet";
-
-function useNow() {
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
-  useEffect(() => {
-    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return now;
-}
 
 export default function Chest() {
   const { address: param } = useParams();
@@ -33,6 +24,7 @@ export default function Chest() {
   const qc = useQueryClient();
   const { t } = useLang();
   const dur = useDuration();
+  const who = useNames(address);
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["chest", address] });
     qc.invalidateQueries({ queryKey: ["chest-events", address] });
@@ -40,6 +32,7 @@ export default function Chest() {
   };
 
   if (!address) return <Missing text={t("chest.notAddress")} />;
+  if (chest.error instanceof OlderChest) return <Older address={address} version={chest.error.version} />;
   if (chest.isError) return <Missing text={t("chest.readFail")} />;
 
   const c = chest.data;
@@ -57,7 +50,7 @@ export default function Chest() {
             <ul className="mono" style={{ listStyle: "none", marginTop: 10, display: "grid", gap: 8 }}>
               {c.members.map((m) => (
                 <li key={m} className="between">
-                  <a href={explorerAddress(m)} target="_blank" rel="noreferrer">{short(m)}</a>
+                  <a href={explorerAddress(m)} target="_blank" rel="noreferrer">{who(m)}</a>
                   {me && m.toLowerCase() === me.toLowerCase() && <span className="chip">{t("chest.you")}</span>}
                 </li>
               ))}
@@ -69,10 +62,10 @@ export default function Chest() {
           <div className="label">{t("chest.rules")}</div>
           {c && (
             <ul className="mono" style={{ marginTop: 10, paddingLeft: 16, display: "grid", gap: 6 }}>
-              <li>{t("chest.rule1", { pct: pct(c.rules.reserveBps), target: usdc(c.rules.reserveTarget) })}</li>
-              <li>{t("chest.rule2", { d: dur(c.rules.periodLength) })}</li>
+              <li>{t("chest.rule0")}</li>
+              <li>{c.rules.reserveBps > 0 ? t("chest.rule1", { pct: pct(c.rules.reserveBps), target: usdc(c.rules.reserveTarget) }) : t("chest.rule1none")}</li>
               <li>{t("chest.rule3", { d: dur(c.rules.timelock) })}</li>
-              <li>{t("chest.rule4", { cap: usdc(c.rules.autoAttributeCap) })}</li>
+              <li>{t("chest.rule4", { cap: usdc(c.rules.autoAttributeCap), d: dur(c.rules.periodLength) })}</li>
             </ul>
           )}
         </div>
@@ -84,86 +77,65 @@ export default function Chest() {
           <h1 className="title" style={{ marginTop: 6 }}>{c?.name ?? "…"}</h1>
           {!isMember && c && <p className="hint" style={{ marginTop: 8 }}>{t("chest.lookingIn")}</p>}
         </div>
-        {c ? <Period chest={c} isMember={isMember} onChange={refresh} /> : <div className="card"><div className="skeleton" style={{ height: 160 }} /></div>}
+        {c ? <Money chest={c} events={events.data} who={who} onChange={refresh} /> : <div className="card"><div className="skeleton" style={{ height: 160 }} /></div>}
         {c && <Invoices chest={c} invoices={invoices} loading={events.isLoading} isMember={isMember} onChange={refresh} />}
         {c && <AgentPanel chest={c} isMember={isMember} onChange={refresh} />}
       </main>
 
       <aside className="side">
         {c && <Votes chest={c} isMember={isMember} me={me} onChange={refresh} />}
-        <Activity events={events.data} loading={events.isLoading} />
+        <Activity events={events.data} loading={events.isLoading} who={who} />
       </aside>
     </div>
   );
 }
 
-function Period({ chest, isMember, onChange }: { chest: ChestT; isMember: boolean; onChange: () => void }) {
-  const now = useNow();
-  const { send, busy } = useTx();
+/** What the team was paid, and what it keeps aside for shared costs. Nothing else waits in the chest. */
+function Money({ chest, events, who, onChange }: { chest: ChestT; events?: CollectiveEvent[]; who: (a: string) => string; onChange: () => void }) {
   const { t } = useLang();
-  const dur = useDuration();
-  const ends = chest.periodStart + chest.rules.periodLength;
-  const over = now >= ends;
-  const reserveFill = chest.rules.reserveTarget > 0n ? Number((chest.reserve * 10_000n) / chest.rules.reserveTarget) / 100 : 100;
-  const max = chest.credits.reduce((m, x) => (x.credit > m ? x.credit : m), 0n);
+  const paid = events ? paidByMember(events) : new Map<string, bigint>();
+  const total = [...paid.values()].reduce((s, v) => s + v, 0n);
+  const max = [...paid.values()].reduce((m, v) => (v > m ? v : m), 0n);
+  const reserveOn = chest.rules.reserveBps > 0;
+  const fill = chest.rules.reserveTarget > 0n ? Number((chest.reserve * 10_000n) / chest.rules.reserveTarget) / 100 : 0;
 
   return (
-    <>
-      <div className="grid2">
-        <div className="card ink tilt-l">
-          <div className="label">{t("chest.pot", { n: chest.period.toString() })}</div>
-          <div className="amount" style={{ marginTop: 8, color: "var(--glow)" }}>{usdc(chest.pool)}<small style={{ color: "inherit", opacity: 0.7 }}>USDC</small></div>
-          <p className="mono" style={{ marginTop: 10, opacity: 0.8 }}>{over ? t("chest.over") : t("chest.paysIn", { d: dur(ends - now) })}</p>
+    <div className="grid2">
+      <div className="card ink tilt-l">
+        <div className="label">{t("chest.paidOut")}</div>
+        <div className="amount" style={{ marginTop: 8, color: "var(--glow)" }}>{usdc(total)}<small style={{ color: "inherit", opacity: 0.7 }}>USDC</small></div>
+        <p className="mono" style={{ marginTop: 10, opacity: 0.8 }}>{t("chest.paidNow")}</p>
+        {total > 0n && (
+          <div className="stack" style={{ marginTop: 14 }}>
+            {[...paid.entries()].map(([m, v]) => (
+              <div key={m} className="bar">
+                <span>{who(m)}</span>
+                <span className="track"><i style={{ width: `${max > 0n ? Number((v * 1000n) / max) / 10 : 0}%` }} /></span>
+                <span>{usdc(v)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {chest.owedToMe > 0n && (
           <div style={{ marginTop: 14 }}>
-            {(isMember || over) && (
-              <OnArc>
-                <button className="btn" disabled={!over || busy || !isMember} onClick={() =>
-                  send(t("tx.payOut"), { address: chest.address, abi: collectiveAbi, functionName: "distribute" }).then((r) => r && onChange())
-                }>{busy ? t("chest.payingOut") : t("chest.payOut")}</button>
-              </OnArc>
-            )}
-          </div>
-        </div>
-        <div className="card tilt-r">
-          <div className="label">{t("chest.reserve")}</div>
-          <div className="amount" style={{ marginTop: 8 }}>{usdc(chest.reserve)}<small>{t("chest.of", { target: usdc(chest.rules.reserveTarget) })}</small></div>
-          <div className="gauge" style={{ marginTop: 14 }}><i style={{ width: `${Math.min(reserveFill, 100)}%` }} /></div>
-          <p className="hint" style={{ marginTop: 10 }}>{t("chest.onlyVote")}</p>
-          {chest.unattributed > 0n && <p className="mono" style={{ marginTop: 10, color: "var(--thread)" }}>{t("chest.unlabelled", { amt: usdc(chest.unattributed) })}</p>}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="between">
-          <div>
-            <div className="label">{t("chest.who")}</div>
-            <div className="h3" style={{ marginTop: 4 }}>{t("chest.shares")}</div>
-          </div>
-          {chest.owedToMe > 0n && (
-            <OnArc>
-              <ClaimButton chest={chest} onDone={onChange} />
-            </OnArc>
-          )}
-        </div>
-        {chest.credits.length === 0 ? (
-          <p className="note muted" style={{ marginTop: 14 }}>{t("chest.noCredit")}</p>
-        ) : (
-          <div className="stack" style={{ marginTop: 16 }}>
-            {chest.credits.map((x) => {
-              const share = chest.totalCredit > 0n ? Number((x.credit * 10_000n) / chest.totalCredit) / 100 : 0;
-              const payout = chest.totalCredit > 0n ? (chest.pool * x.credit) / chest.totalCredit : 0n;
-              return (
-                <div key={x.member} className="bar">
-                  <span>{short(x.member)}</span>
-                  <span className="track"><i style={{ width: `${max > 0n ? Number((x.credit * 1000n) / max) / 10 : 0}%` }} /></span>
-                  <span>{share}% · {usdc(payout)}</span>
-                </div>
-              );
-            })}
+            <OnArc><ClaimButton chest={chest} onDone={onChange} /></OnArc>
           </div>
         )}
       </div>
-    </>
+      <div className="card tilt-r">
+        <div className="label">{t("chest.reserve")}</div>
+        {reserveOn ? (
+          <>
+            <div className="amount" style={{ marginTop: 8 }}>{usdc(chest.reserve)}<small>{t("chest.of", { target: usdc(chest.rules.reserveTarget) })}</small></div>
+            <div className="gauge" style={{ marginTop: 14 }}><i style={{ width: `${Math.min(fill, 100)}%` }} /></div>
+            <p className="hint" style={{ marginTop: 10 }}>{t("chest.reserveUse")}</p>
+          </>
+        ) : (
+          <p className="note" style={{ marginTop: 10 }}>{t("chest.reserveOff")}</p>
+        )}
+        {chest.unattributed > 0n && <p className="mono" style={{ marginTop: 10, color: "var(--thread)" }}>{t("chest.unlabelled", { amt: usdc(chest.unattributed) })}</p>}
+      </div>
+    </div>
   );
 }
 
@@ -179,31 +151,31 @@ function ClaimButton({ chest, onDone }: { chest: ChestT; onDone: () => void }) {
 }
 
 type T = (k: string, v?: Record<string, string | number>) => string;
-const line = (e: CollectiveEvent, t: T): string | null => {
+const line = (e: CollectiveEvent, t: T, who: (a: string) => string): string | null => {
   const a = e.args as Record<string, unknown>;
   const amt = () => usdc(a.amount as bigint);
   switch (e.eventName) {
     case "CollectiveInitialized": return t("ev.opened");
-    case "InvoiceCreated": return t("ev.invoiceCreated", { amt: amt() });
-    case "InvoicePaid": return t("ev.invoicePaid", { amt: amt(), res: usdc(a.toReserve as bigint) });
+    case "InvoiceCreated": return a.note ? t("ev.invoiceCreatedFor", { amt: amt(), note: String(a.note) }) : t("ev.invoiceCreated", { amt: amt() });
+    case "InvoiceApproved": return t("ev.agreed", { who: who(a.member as string) });
+    case "InvoicePaid": return (a.toReserve as bigint) > 0n ? t("ev.invoicePaid", { amt: amt(), res: usdc(a.toReserve as bigint) }) : t("ev.invoicePaidAll", { amt: amt() });
     case "InvoiceCancelled": return t("ev.invoiceCancelled");
     case "InvoiceSettled": return t("ev.settled", { amt: amt() });
-    case "Paid": return t("ev.paid", { amt: amt(), who: short(a.member as string) });
-    case "PayoutDeferred": return t("ev.deferred", { amt: amt(), who: short(a.member as string) });
-    case "Distributed": return t("ev.distributed", { n: String(a.period), amt: usdc(a.total as bigint) });
-    case "Attributed": return t("ev.attributed", { amt: amt(), who: short(a.member as string) });
+    case "Paid": return t("ev.paid", { amt: amt(), who: who(a.member as string) });
+    case "PayoutDeferred": return t("ev.deferred", { amt: amt(), who: who(a.member as string) });
+    case "Attributed": return t("ev.attributed", { amt: amt(), who: who(a.member as string) });
     case "ExpensePaid": return t("ev.expense", { amt: amt(), who: short(a.to as string) });
     case "Proposed": return t("ev.proposed", { n: String(a.id) });
     case "Executed": return t("ev.executed", { n: String(a.id) });
-    case "ReserveReleased": return t("ev.reserve", { amt: amt(), who: short(a.to as string) });
+    case "ReserveReleased": return t("ev.reserve", { amt: amt(), who: who(a.to as string) });
     case "Claimed": return t("ev.claimed", { amt: amt() });
     default: return null;
   }
 };
 
-function Activity({ events, loading }: { events?: CollectiveEvent[]; loading: boolean }) {
+function Activity({ events, loading, who }: { events?: CollectiveEvent[]; loading: boolean; who: (a: string) => string }) {
   const { t } = useLang();
-  const items = (events ?? []).map((e) => ({ e, text: line(e, t) })).filter((x) => x.text).reverse().slice(0, 25);
+  const items = (events ?? []).map((e) => ({ e, text: line(e, t, who) })).filter((x) => x.text).reverse().slice(0, 25);
   return (
     <div className="card tilt-r pin-gold">
       <div className="label">{t("chest.record")}</div>
@@ -216,6 +188,25 @@ function Activity({ events, loading }: { events?: CollectiveEvent[]; loading: bo
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function Older({ address, version }: { address: Address; version: string }) {
+  const { t } = useLang();
+  return (
+    <div className="board">
+      <aside className="rail"><Brand /></aside>
+      <main className="main">
+        <div className="card tilt-l">
+          <div className="label">{t("chest.label")} · {short(address)}</div>
+          <p className="note" style={{ marginTop: 10 }}>{t("chest.older", { v: version })}</p>
+          <div className="row" style={{ marginTop: 14, flexWrap: "wrap" }}>
+            <a className="btn ghost small" href={explorerAddress(address)} target="_blank" rel="noreferrer">{t("chest.olderExplorer")}</a>
+            <Link className="btn small" to="/app/bill">{t("h.bill")}</Link>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

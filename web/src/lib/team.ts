@@ -6,7 +6,7 @@ import { publicClient } from "./arc";
 import { FACTORY } from "./contracts";
 import { short } from "./format";
 
-export type MyChest = { address: Address; name: string; pool: bigint };
+export type MyChest = { address: Address; name: string };
 
 /** Chests from the current factory where `me` is still a member, newest first. */
 export function useMyChests(me?: Address) {
@@ -20,15 +20,14 @@ export function useMyChests(me?: Address) {
         allowFailure: false,
         contracts: list.flatMap((a) => [
           { address: a, abi: collectiveAbi, functionName: "name" } as const,
-          { address: a, abi: collectiveAbi, functionName: "pool" } as const,
           { address: a, abi: collectiveAbi, functionName: "isMember", args: [me!] } as const,
         ]),
       });
       // collectivesOf can be padded by strangers listing you as a member and then removing you; keep only live memberships.
       return list
-        .map((a, i) => ({ address: a, name: reads[i * 3] as string, pool: reads[i * 3 + 1] as bigint, member: reads[i * 3 + 2] as boolean }))
+        .map((a, i) => ({ address: a, name: reads[i * 2] as string, member: reads[i * 2 + 1] as boolean }))
         .filter((x) => x.member)
-        .map(({ address, name, pool }) => ({ address, name, pool }))
+        .map(({ address, name }) => ({ address, name }))
         .reverse();
     },
   });

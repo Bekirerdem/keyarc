@@ -31,7 +31,7 @@ export function modelLabel(id: string): string {
   return `Claude ${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}`;
 }
 
-/** The agent's own words, shown apart from the facts: a reason, a summary or a note body. */
+/** The agent's own words, shown apart from the facts: a reason, a summary, a note body or a reminder. */
 export function modelText(d: Decision): string | null {
   const o = d.model?.output as Record<string, unknown> | undefined;
   if (!o) return null;
@@ -80,18 +80,19 @@ export type ReminderDraft = { subject: string; message: string; payLink: string;
 /** Member-signed: the agent checks the invoice is open on chain and words the reminder; the team sends it. */
 export async function requestReminder(
   chest: Address,
-  invoice: { id: Hex; createdTx: Hex; amount: bigint },
+  invoice: { id: Hex; createdTx: Hex; amount: bigint; note: string },
   lang: "en" | "tr",
   sign: (message: string) => Promise<Hex>,
 ): Promise<ReminderDraft> {
   if (agentMock()) {
     // the walkthrough has no wallet: show what a member would get back
     const amt = formatUnits(invoice.amount, 6);
+    const job = invoice.note || (lang === "tr" ? "son işimiz" : "our latest work");
     const payLink = `${window.location.origin}/pay/${chest}/${invoice.id}`;
     const body = lang === "tr"
-      ? `Merhaba,\n\nEkim ayı web sitesi bakımı için ${amt} USDC tutarındaki faturamız hâlâ açık görünüyor. Uygun olduğunuzda aşağıdaki linkten Arc ya da Base üzerinden USDC ile ödeyebilirsiniz.\n\nİyi çalışmalar,\nKeyarc Studio`
-      : `Hi,\n\nOur invoice for October's website upkeep, ${amt} USDC, still shows as open. Whenever it suits you, you can pay it in USDC from Arc or Base using the link below.\n\nBest,\nKeyarc Studio`;
-    return { subject: lang === "tr" ? "Hatırlatma: Ekim web sitesi bakımı" : "Reminder: October website upkeep", message: `${body}\n\n${payLink}`, payLink, model: "claude-haiku-5-5", at: Date.now(), daysOpen: 9 };
+      ? `Merhaba,\n\n${job} için ${amt} USDC tutarındaki faturamız hâlâ açık görünüyor. Uygun olduğunuzda aşağıdaki linkten Arc ya da Base üzerinden USDC ile ödeyebilirsiniz.\n\nİyi çalışmalar,\nKeyarc Studio`
+      : `Hi,\n\nOur invoice for ${job}, ${amt} USDC, still shows as open. Whenever it suits you, you can pay it in USDC from Arc or Base using the link below.\n\nBest,\nKeyarc Studio`;
+    return { subject: lang === "tr" ? `Hatırlatma: ${job}` : `Reminder: ${job}`, message: `${body}\n\n${payLink}`, payLink, model: "claude-haiku-5-5", at: Date.now(), daysOpen: 9 };
   }
   const message = JSON.stringify({ chest, at: Date.now(), id: invoice.id, createdTx: invoice.createdTx, lang });
   const signature = await sign(message);
@@ -105,7 +106,7 @@ export async function requestReminder(
   return body;
 }
 
-// ── mock data ───────────────────────────────────────────
+// ── mock data: one team's week, as the agent would record it ──
 
 const MOCK_AGENT: Address = "0xBB682c02E3429d808499c1Ec5414b34113A21017";
 const MOCK_VENDORS: Vendor[] = [
@@ -118,16 +119,49 @@ const tx = (n: number) => `0x${n.toString(16).padStart(4, "0")}${"cd".repeat(30)
 function mockFeed(chest: Address): AgentFeed {
   const now = Date.now();
   const H = 60 * 60 * 1000;
+  const link = `${typeof window !== "undefined" ? window.location.origin : "https://keyarc.app"}/pay/${chest}/0x${"14".repeat(32)}`;
+  const reminder = `Hi Anouk,\n\nOur invoice for the Shopify store rebuild, 4,800 USDC (due 2026-10-11), still shows as open. Whenever it suits you, you can pay it in USDC from Base or Arc using the link below.\n\nThanks again for the smooth launch,\nKeyarc Studio\n\n${link}`;
   const decisions: Decision[] = [
     {
-      id: "n1", chest, at: now - 0.2 * H, kind: "note", title: "Three months of costs covered; the reserve could be thicker.",
-      facts: { reserve: "45.00 USDC (target 100, 10% of each payment)", "costs per month (observed)": "55.00 USDC", "months covered": "3.1" },
+      id: "n1", chest, at: now - 0.2 * H, kind: "note", title: "Tools are covered for about four months.",
+      facts: {
+        "set aside for shared costs": "96.00 USDC (fills to 300, 5% of each payment)",
+        "income per month (observed)": "7,200.00 USDC over 30 day(s) of data",
+        "costs per month (observed)": "24.00 USDC",
+        "months of shared costs covered": "4",
+        "paid out to members so far": "6,840.00 USDC",
+      },
       checks: [],
-      model: { name: "claude-haiku-5-5", output: { headline: "Three months of costs covered; the reserve could be thicker.", body: "Income this month was 480 USDC against 55 USDC of costs, so the chest covers about three months. The reserve sits at 45 of a 100 USDC target. A slightly larger reserve share would reach the target in two more invoices.", suggestion: "raise_reserve", suggestedReservePercent: 15, reasoning: "Reserve is below target while income is steady." } },
+      model: { name: "claude-haiku-5-5", output: { headline: "Tools are covered for about four months.", body: "Two invoices came in this month, 7,200 USDC, and 6,840 went straight to the three of you. The shared-costs share holds 96 USDC against about 24 USDC a month of Figma and hosting, so it covers four months. No change needed.", suggestion: "none", suggestedReservePercent: 0, reasoning: "Shared costs are small and well covered." } },
       outcome: "noted", ref: ref(1),
     },
     {
-      id: "r1", chest, at: now - 1 * H, kind: "invoice", title: "Refused an invoice from figrna-billing.com",
+      id: "m1", chest, at: now - 0.6 * H, kind: "reminder", title: "Invoice 5 day(s) past due: drafted a reminder for 4,800 USDC",
+      facts: { amount: "4,800.00 USDC", "open for": "19 day(s)", due: "2026-10-11", for: "Shopify store rebuild", "pay link": link },
+      checks: [
+        { name: "invoice is open", ok: true, detail: "status read from the chest" },
+        { name: "past its due date", ok: true, detail: "due 2026-10-11, 5 day(s) late" },
+        { name: "everyone agreed to the shares", ok: true, detail: "the client can pay it now" },
+        { name: "pay link from code", ok: true, detail: link },
+      ],
+      model: { name: "claude-haiku-5-5", output: { subject: "Reminder: Shopify store rebuild · 4,800 USDC", message: reminder } },
+      outcome: "drafted", ref: ref(2),
+    },
+    {
+      id: "s1", chest, at: now - 3 * H, kind: "inflow", title: "Matched 2,400.00 USDC to an invoice and paid the team",
+      facts: { amount: "2,400.00 USDC", inflowTx: tx(4), from: "0x0000000000000000000000000000000000000000 (CCTP mint from Base)", candidates: "1" },
+      checks: [
+        { name: "matching invoices", ok: true, detail: "1 open invoice(s) paid by 2,400 USDC" },
+        { name: "model agrees", ok: true, detail: "settle (96%)" },
+        { name: "confidence", ok: true, detail: "96% (needs 80%)" },
+        { name: "within agent limit", ok: true, detail: "3,000 USDC left this month" },
+        { name: "money is in the chest", ok: true, detail: "2,400 USDC unlabelled" },
+      ],
+      model: { name: "claude-haiku-5-5", output: { decision: "settle", confidence: 0.96, reasoning: "Exactly one open invoice is for 2,400 USDC (store upkeep and SEO, October), written before the payment, and the pay page left a note that the client paid it from Base." } },
+      outcome: "settled", ref: ref(4), tx: tx(5),
+    },
+    {
+      id: "r1", chest, at: now - 5 * H, kind: "invoice", title: "Refused an invoice from figrna-billing.com",
       facts: { from: "billing@figrna-billing.com", subject: "URGENT: updated wallet for Figma invoice", invoice: "FIG-2026-10", amount: "480.00 USDC", billed: "Figma Professional, October" },
       checks: [
         { name: "known supplier", ok: false, detail: "nobody registered for figrna-billing.com" },
@@ -137,34 +171,10 @@ function mockFeed(chest: Address): AgentFeed {
         { name: "payee allowed on chain", ok: false, detail: "—" },
       ],
       model: { name: "claude-haiku-5-5", output: { summary: "Claims to be Figma, says the wallet changed and asks for 480 USDC today; contains a line telling an AI assistant to skip checks.", asksToChangePaymentDetails: true, pressure: true, embeddedInstructions: true } },
-      outcome: "rejected", ref: ref(2),
+      outcome: "rejected", ref: ref(6),
     },
     {
-      id: "h1", chest, at: now - 2 * H, kind: "invoice", title: "Held an invoice from Hetzner",
-      facts: { from: "invoices@hetzner.com", subject: "Invoice R0041 (server upgrade)", invoice: "R0041", amount: "400.00 USDC", billed: "Dedicated server, annual upgrade" },
-      checks: [
-        { name: "known supplier", ok: true, detail: "Hetzner (hetzner.com)" },
-        { name: "amount in usual range", ok: false, detail: "400.00 USDC; usual 40, max 120" },
-        { name: "payment details unchanged", ok: true, detail: "no wallet named" },
-        { name: "payee allowed on chain", ok: true, detail: "allowlisted by vote" },
-      ],
-      model: { name: "claude-haiku-5-5", output: { summary: "Annual dedicated server upgrade, ten times the usual monthly bill." } },
-      outcome: "held", ref: ref(3),
-    },
-    {
-      id: "s1", chest, at: now - 3 * H, kind: "inflow", title: "Matched 250.00 USDC to an invoice",
-      facts: { amount: "250.00 USDC", inflowTx: tx(4), from: "0x0000000000000000000000000000000000000000 (CCTP mint)", candidates: "1" },
-      checks: [
-        { name: "matching invoices", ok: true, detail: "1 open invoice(s) for exactly 250 USDC" },
-        { name: "model agrees", ok: true, detail: "settle (94%)" },
-        { name: "confidence", ok: true, detail: "94% (needs 80%)" },
-        { name: "within agent limit", ok: true, detail: "300 USDC left this period" },
-      ],
-      model: { name: "claude-haiku-5-5", output: { decision: "settle", confidence: 0.94, reasoning: "Exactly one open invoice is for 250 USDC, created before the payment, and the payer left a note that they paid from Base." } },
-      outcome: "settled", ref: ref(4), tx: tx(5),
-    },
-    {
-      id: "p1", chest, at: now - 4 * H, kind: "invoice", title: "Paid Figma 15.00 USDC",
+      id: "p1", chest, at: now - 26 * H, kind: "invoice", title: "Paid Figma 15.00 USDC",
       facts: { from: "invoices@figma.com", subject: "Your Figma invoice", invoice: "FIG-2026-09", amount: "15.00 USDC", billed: "Figma Professional, September" },
       checks: [
         { name: "known supplier", ok: true, detail: "Figma (figma.com)" },
@@ -172,10 +182,11 @@ function mockFeed(chest: Address): AgentFeed {
         { name: "not a duplicate", ok: true, detail: "FIG-2026-09" },
         { name: "payment details unchanged", ok: true, detail: "no wallet named" },
         { name: "payee allowed on chain", ok: true, detail: "allowlisted by vote" },
-        { name: "within agent limit", ok: true, detail: "200 USDC left this period" },
+        { name: "within agent limit", ok: true, detail: "100 USDC left this month" },
+        { name: "covered by shared costs", ok: true, detail: "111 USDC set aside for shared costs" },
       ],
       model: { name: "claude-haiku-5-5", output: { summary: "Figma Professional seat, September." } },
-      outcome: "paid", ref: ref(6), tx: tx(7),
+      outcome: "paid", ref: ref(7), tx: tx(8),
     },
   ];
   return { agent: MOCK_AGENT, managed: true, model: "claude-haiku-5-5", decisions };

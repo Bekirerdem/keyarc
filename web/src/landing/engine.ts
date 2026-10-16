@@ -32,6 +32,8 @@ export function initLanding(root: HTMLElement): () => void {
   const lines = qa("#receipt .ln");
   const ptapeTicks = q("#ptape .ticks");
   const ptapeDays = q("#ptape .days");
+  /** Where an odometer ends: its data-final, else the number it is sized for. */
+  const target = (sel: string) => Number(q(sel).dataset.final ?? q(sel).dataset.max ?? 0);
 
   // ── scenes ──────────────────────────────────────────────────────────────
   const scenes: Record<string, Scene> = {};
@@ -182,9 +184,11 @@ export function initLanding(root: HTMLElement): () => void {
   // ── static DOM preparation ──────────────────────────────────────────────
   odos.forEach(makeOdo);
   for (let i = 1; i <= 31; i++) ptapeTicks.appendChild(document.createElement("i"));
-  [1, 5, 10, 15, 20, 25, 31].forEach((n) => {
+  // the tape's scale comes from the page (a day of minutes, a month of days): the story sets it, not the engine
+  const tapeLabels = q("#ptape").dataset.labels?.split(",") ?? [1, 5, 10, 15, 20, 25, 31].map((n) => String(n).padStart(2, "0"));
+  tapeLabels.forEach((label) => {
     const s = document.createElement("span");
-    s.textContent = String(n).padStart(2, "0");
+    s.textContent = label;
     ptapeDays.appendChild(s);
   });
   // split the hero headline into letters for a 1f glyph stagger; letters are grouped per word
@@ -255,7 +259,7 @@ export function initLanding(root: HTMLElement): () => void {
       const t = l.dataset.text ?? "";
       const k = clamp(left, 0, t.length);
       left -= t.length;
-      const shown = t.slice(0, k).replace(/(matched|paid|held|eşleşti|ödendi|bekletildi)/g, "<b>$1</b>");
+      const shown = t.slice(0, k).replace(/(matched|paid|held|drafted|eşleşti|ödendi|bekletildi|hazırlandı)/g, "<b>$1</b>");
       l.innerHTML = shown + (k > 0 && k < t.length ? '<span class="caret"></span>' : "");
     });
   };
@@ -307,10 +311,10 @@ export function initLanding(root: HTMLElement): () => void {
     [...hr, ...br, tInv, tRes, tAli, tAyse, tHold].forEach((r) => (r.reveal = 1));
     tHold.taut = tHold.tautTarget = tHold.holdTaut = 1;
     heldTag.vis = 1;
-    setOdo(q("#resAmt"), 200);
-    setOdo(q("#aliAmt"), 1080);
-    setOdo(q("#ayseAmt"), 720);
-    setOdo(q("#voteOdo"), 2);
+    setOdo(q("#resAmt"), target("#resAmt"));
+    setOdo(q("#aliAmt"), target("#aliAmt"));
+    setOdo(q("#ayseAmt"), target("#ayseAmt"));
+    setOdo(q("#voteOdo"), target("#voteOdo"));
     gsap.set(qa(".stamp"), { scale: 1 });
     gsap.set(q("#needle"), { left: "80%" });
     q("#ruler").classList.add("at-limit");
@@ -441,7 +445,7 @@ export function initLanding(root: HTMLElement): () => void {
       .to(tRes, { reveal: 1, duration: 0.4, ease: LAND }, "<.2")
       .add(flow(bRes, 0.8))
       .add(recv(q("#res"), tRes))
-      .add(value(0, 200, 0.5, LAND, (v) => setOdo(q("#resAmt"), v)), "<")
+      .add(value(0, target("#resAmt"), 0.5, LAND, (v) => setOdo(q("#resAmt"), v)), "<")
       .add(step(3), "<")
       .add(flag("#fl2"), "<")
       .add(slam(q("#pAli"), { y: 300, rot: -16 }), ">-.1")
@@ -453,14 +457,14 @@ export function initLanding(root: HTMLElement): () => void {
       .add(step(4), "split+=.4")
       .add(recv(q("#pAli"), tAli), "split+=1")
       .add(recv(q("#pAyse"), tAyse), "split+=1.15")
-      .add(value(0, 1080, 0.7, LAND, (v) => setOdo(q("#aliAmt"), v)), "split+=1")
-      .add(value(0, 720, 0.7, LAND, (v) => setOdo(q("#ayseAmt"), v)), "split+=1.15")
+      .add(value(0, target("#aliAmt"), 0.7, LAND, (v) => setOdo(q("#aliAmt"), v)), "split+=1")
+      .add(value(0, target("#ayseAmt"), 0.7, LAND, (v) => setOdo(q("#ayseAmt"), v)), "split+=1.15")
       .add(flag("#fl3"), "split+=1.2")
       .to([q("#pAli"), q("#pAyse")], {
         boxShadow: "0 0 0 3px #ffe08a, 0 0 40px 8px rgba(255,214,110,.7), 0 14px 28px -8px rgba(40,20,5,.45)",
         duration: 0.3, ease: LAND, stagger: 0.1,
       }, "split+=1.2")
-      .to(q(".ptape .now"), { left: "30%", duration: 0.6, ease: SHIFT }, "split+=1.2")
+      .to(q(".ptape .now"), { left: q("#ptape").dataset.now ?? "30%", duration: 0.6, ease: SHIFT }, "split+=1.2")
       // hold so the counters sit on their final values well before the pin releases
       .to({}, { duration: 0.9 });
   };

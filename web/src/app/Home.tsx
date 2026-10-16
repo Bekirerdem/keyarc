@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { useConnection } from "wagmi";
 import { DEMO_CHEST } from "../lib/contracts";
-import { short, usdc } from "../lib/format";
+import { short } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { useMyChests } from "../lib/team";
 import { Brand, Wallet } from "./Wallet";
@@ -63,7 +63,6 @@ export default function Home() {
               <Link to={`/c/${c.address}`} style={{ textDecoration: "none", color: "inherit" }}>
                 <div className="label">{short(c.address)}</div>
                 <div className="h3" style={{ marginTop: 6 }}>{c.name}</div>
-                <div className="amount" style={{ marginTop: 10 }}>{usdc(c.pool)}<small>{t("home.thisPeriod")}</small></div>
               </Link>
               <Link className="btn ghost small" style={{ marginTop: 12 }} to={`/app/bill?team=${c.address}`}>{t("h.bill")}</Link>
             </div>

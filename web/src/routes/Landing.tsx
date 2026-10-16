@@ -33,7 +33,7 @@ function SheetHalf({ side, t }: { side: "l" | "r"; t: T }) {
           <tbody>
             <tr><td>Lena</td><td>{t("l.sheet.owe")} {t("l.sheet.lenaOwed")}</td><td className="q">{t("l.sheet.partial")}</td></tr>
             <tr><td>Marco</td><td>{t("l.sheet.owe")} {t("l.sheet.marcoOwed")}</td><td className="q">{t("l.sheet.which")}</td></tr>
-            <tr><td>{t("l.sheet.reserve")}</td><td>—</td><td className="x">{t("l.sheet.forgot")}</td></tr>
+            <tr><td>{t("l.sheet.tools")}</td><td>{t("l.sheet.toolsAmt")}</td><td className="q">{t("l.sheet.toolsWho")}</td></tr>
           </tbody>
         </table>
       </div>
@@ -114,10 +114,10 @@ function Board() {
           </div>
 
           {/* money enters at the top (clients pay a link), runs through the job, lands with the people */}
-          <div className="card client kraft hc lift" id="cWeb" data-depth="1.25" data-bead={t("l.bead.client")} style={at("57vw", "11vh", "-2.5deg")}><i className="pin" /><span className="label">{t("l.client.monthly")}</span><div className="cname">{t("l.client.coffee")}</div><span className="paylink">{t("l.client.link")} #014 ↗</span></div>
-          <div className="card client kraft hc lift" id="cApi" data-depth=".9" style={at("78vw", "11vh", "2deg")}><i className="pin" /><span className="label">{t("l.client.once")}</span><div className="cname">{t("l.client.fintech")}</div><span className="paylink">{t("l.client.link")} #015 ↗</span></div>
-          <div className="card job hc lift" id="jWeb" data-depth=".95" style={at("56vw", "36vh", "2deg")}><i className="pin brass" /><span className="label">{t("l.job.retainer")}</span><h4>{t("l.job.web")}</h4><div className="jobamt">{t("l.job.retainerAmt")}</div><div className="who"><span className="chip">Deniz 60%</span><span className="chip">Lena 40%</span></div></div>
-          <div className="card job hc lift" id="jApi" data-depth="1.2" style={at("76vw", "39vh", "-3deg")}><i className="pin brass" /><span className="label">{t("l.job.oneoff")}</span><h4>{t("l.job.launch")}</h4><div className="jobamt">{t("l.job.oneoffAmt")}</div><div className="who"><span className="chip">Lena 50%</span><span className="chip">Marco 30%</span><span className="chip">Deniz 20%</span></div></div>
+          <div className="card client kraft hc lift" id="cWeb" data-depth="1.25" data-bead={t("l.bead.client")} style={at("57vw", "11vh", "-2.5deg")}><i className="pin" /><span className="label">{t("l.client.monthly")}</span><div className="cname">{t("l.client.shop")}</div><span className="paylink">{t("l.client.link")} #015 ↗</span></div>
+          <div className="card client kraft hc lift" id="cApi" data-depth=".9" style={at("78vw", "11vh", "2deg")}><i className="pin" /><span className="label">{t("l.client.once")}</span><div className="cname">{t("l.client.travel")}</div><span className="paylink">{t("l.client.link")} #014 ↗</span></div>
+          <div className="card job hc lift" id="jWeb" data-depth=".95" style={at("56vw", "36vh", "2deg")}><i className="pin brass" /><span className="label">{t("l.job.retainer")}</span><h4>{t("l.job.upkeep")}</h4><div className="jobamt">{t("l.job.retainerAmt")}</div><div className="who"><span className="chip">Deniz 70%</span><span className="chip">Marco 30%</span></div></div>
+          <div className="card job hc lift" id="jApi" data-depth="1.2" style={at("76vw", "39vh", "-3deg")}><i className="pin brass" /><span className="label">{t("l.job.oneoff")}</span><h4>{t("l.job.redesign")}</h4><div className="jobamt">{t("l.job.oneoffAmt")}</div><div className="who"><span className="chip">Lena 45%</span><span className="chip">Deniz 40%</span><span className="chip">Marco 15%</span></div></div>
           <div className="card member hc lift" id="mAli" data-depth="1.15" style={at("57vw", "66vh", "-4deg")}><i className="pin" /><div className="face">D</div><div className="name">Deniz</div><div className="role">{t("l.role.dev")}</div></div>
           <div className="card member hc lift" id="mAyse" data-depth=".8" style={at("71vw", "69vh", "3deg")}><i className="pin" /><div className="face" style={{ background: "#7a2a1d" }}>L</div><div className="name">Lena</div><div className="role">{t("l.role.design")}</div></div>
           <div className="card member hc lift" id="mMeh" data-depth="1.3" style={at("85vw", "65vh", "-2deg")}><i className="pin" /><div className="face" style={{ background: "#2f4a3a" }}>M</div><div className="name">Marco</div><div className="role">{t("l.role.copy")}</div></div>
@@ -150,10 +150,10 @@ function Board() {
             <span className="label">{t("l.so.invoice")}</span>
             <div className="row"><span className="note" style={{ fontSize: 19 }}>{t("l.so.client")}</span><span className="amount">{t("l.so.amount")}</span></div>
           </div>
-          <div className="card job lift" id="soJob" style={at("12vw", "42vh", "1.5deg")}><i className="pin brass" /><span className="label">{t("l.so.matched")}</span><h4>{t("l.job.web")}</h4><div className="who"><span className="chip">Deniz 60%</span><span className="chip">Lena 40%</span></div></div>
-          <div className="card reserve lift" id="res" data-bead={t("l.bead.res")} style={at("38vw", "12vh", "-1deg")}><i className="pin" /><span className="label" style={{ position: "relative" }}>{t("l.so.reserve")}</span><span className="amount" style={{ position: "relative" }}><span className="odo" id="resAmt" data-max="200" /> USDC</span></div>
-          <div className="card payee lift" id="pAli" data-bead={t("l.bead.a")} style={at("40vw", "50vh", "-3deg")}><i className="pin" /><span className="label">Deniz · 60%</span><div className="amount"><span className="odo" id="aliAmt" data-max="1080" /> USDC</div><span className="chip paycur">{t("l.so.payA")}</span></div>
-          <div className="card payee lift" id="pAyse" data-bead={t("l.bead.b")} style={at("55vw", "55vh", "2.5deg")}><i className="pin" /><span className="label">Lena · 40%</span><div className="amount"><span className="odo" id="ayseAmt" data-max="720" /> USDC</div><span className="chip paycur">{t("l.so.payB")}</span></div>
+          <div className="card job lift" id="soJob" style={at("12vw", "42vh", "1.5deg")}><i className="pin brass" /><span className="label">{t("l.so.matched")}</span><h4>{t("l.job.upkeep")}</h4><div className="who"><span className="chip">Deniz 70% ✓</span><span className="chip">Marco 30% ✓</span></div></div>
+          <div className="card reserve lift" id="res" data-bead={t("l.bead.res")} style={at("38vw", "12vh", "-1deg")}><i className="pin" /><span className="label" style={{ position: "relative" }}>{t("l.so.reserve")}</span><span className="amount" style={{ position: "relative" }}><span className="odo" id="resAmt" data-max="120" /> USDC</span></div>
+          <div className="card payee lift" id="pAli" data-bead={t("l.bead.a")} style={at("40vw", "50vh", "-3deg")}><i className="pin" /><span className="label">Deniz · 70%</span><div className="amount"><span className="odo" id="aliAmt" data-max="1596" /> USDC</div><span className="chip paycur">{t("l.so.payA")}</span></div>
+          <div className="card payee lift" id="pAyse" data-bead={t("l.bead.b")} style={at("55vw", "55vh", "2.5deg")}><i className="pin" /><span className="label">Marco · 30%</span><div className="amount"><span className="odo" id="ayseAmt" data-max="684" /> USDC</div><span className="chip paycur">{t("l.so.payB")}</span></div>
           <div className="burst" id="burst" />
           <div className="steps">
             <div className="step"><b>01</b><span>{t("l.so.step1")}</span></div>
@@ -161,14 +161,14 @@ function Board() {
             <div className="step"><b>03</b><span>{t("l.so.step3")}</span></div>
             <div className="step"><b>04</b><span>{t("l.so.step4")}</span></div>
           </div>
-          <div className="ptape" id="ptape">
+          <div className="ptape" id="ptape" data-labels={t("l.so.ticks")} data-now="93%">
             <span className="label" style={{ position: "absolute", right: 18, top: -24, background: "var(--paper)", padding: "3px 8px", transform: "rotate(1deg)" }}>{t("l.so.period")}</span>
             <div className="ticks" />
             <div className="days" />
             <span className="now" />
-            <span className="flag" id="fl1" style={{ left: "7%" }}>{t("l.so.day")}<b>{t("l.so.flag1.n")}</b>{t("l.so.flag1")}</span>
-            <span className="flag" id="fl2" style={{ left: "34%" }}>{t("l.so.day")}<b>200</b>{t("l.so.flag2")}</span>
-            <span className="flag" id="fl3" style={{ left: "58%" }}>{t("l.so.day")}<b>{t("l.so.flag3.n")}</b>{t("l.so.flag3")}</span>
+            <span className="flag" id="fl1" style={{ left: "3%" }}>{t("l.so.flag1.t")}<b>{t("l.so.flag1.n")}</b>{t("l.so.flag1")}</span>
+            <span className="flag" id="fl2" style={{ left: "31%" }}>{t("l.so.flag2.t")}<b>{t("l.so.flag2.n")}</b>{t("l.so.flag2")}</span>
+            <span className="flag" id="fl3" style={{ left: "70%" }}>{t("l.so.flag3.t")}<b>{t("l.so.flag3.n")}</b>{t("l.so.flag3")}</span>
           </div>
         </div>
       </section>
@@ -181,7 +181,7 @@ function Board() {
           <div className="card ballot lift" id="ballot" style={at("7vw", "44vh", "-1.5deg")}>
             <i className="pin" />
             <span className="label">{t("l.rules.proposal")}</span>
-            <span className="tally"><span className="odo" id="voteOdo" data-max="3" />/3</span>
+            <span className="tally"><span className="odo" id="voteOdo" data-max="3" data-final="2" />/3</span>
             <h4>{t("l.rules.reserve3")}</h4>
             <div className="votes">
               <Vote who="D" yes label={yes} /><Vote who="L" yes label={yes} /><Vote who="M" yes={false} label={yes} />
@@ -201,6 +201,7 @@ function Board() {
             <div className="ln" data-text={t("l.rules.log1")} />
             <div className="ln" data-text={t("l.rules.log2")} />
             <div className="ln" data-text={t("l.rules.log3")} />
+            <div className="ln" data-text={t("l.rules.log4")} />
           </div>
         </div>
       </section>

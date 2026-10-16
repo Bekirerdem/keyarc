@@ -10,6 +10,7 @@ import { short } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { useTx } from "../lib/tx";
 import type { Chest, Rules } from "./useChest";
+import { SendRow } from "./Invoices";
 import { OnArc } from "./Wallet";
 
 const RULES_T = [{
@@ -48,7 +49,10 @@ export function AgentPanel({ chest, isMember, onChange }: { chest: Chest; isMemb
           <div className="label">{t("ag.label")}</div>
           <div className="h3" style={{ marginTop: 4 }}>{t("ag.title")}</div>
         </div>
-        {f && <span className="chip">{modelLabel(f.model)}</span>}
+        <div className="row">
+          {demo && <span className="chip">{t("ag.sample")}</span>}
+          {f && <span className="chip">{modelLabel(f.model)}</span>}
+        </div>
       </div>
 
       {feed.isLoading && <div className="skeleton" style={{ marginTop: 14, height: 90 }} />}
@@ -129,10 +133,17 @@ function DecisionCard({ d }: { d: Decision }) {
         </div>
       )}
 
-      {reading && (
+      {reading && d.kind !== "reminder" && (
         <div className="reading">
           <div className="label">{t("ag.reasoning")}</div>
           <p className="note">{reading}</p>
+        </div>
+      )}
+      {d.kind === "reminder" && reading && (
+        <div className="reading">
+          <div className="label">{t("ag.draft")}</div>
+          <p className="note" style={{ whiteSpace: "pre-line" }}>{reading}</p>
+          <SendRow subject={String((d.model?.output as { subject?: string } | undefined)?.subject ?? "")} text={reading} />
         </div>
       )}
 
@@ -149,10 +160,11 @@ function NoteCard({ d, chest, isMember, onChange }: { d: Decision; chest: Chest;
   const { send, busy } = useTx();
   const o = (d.model?.output ?? {}) as { body?: string; suggestion?: string; suggestedReservePercent?: number };
   const pctNext = o.suggestedReservePercent ?? 0;
-  const suggests = (o.suggestion === "raise_reserve" || o.suggestion === "lower_reserve") && pctNext > 0 && pctNext <= 100;
+  const suggests = (o.suggestion === "raise_reserve" || o.suggestion === "lower_reserve") && pctNext >= 0 && pctNext <= 50 && Math.round(pctNext * 100) !== chest.rules.reserveBps;
 
   const vote = () => {
-    const next: Rules = { ...chest.rules, reserveBps: Math.round(pctNext * 100) };
+    const target = chest.rules.reserveTarget > 0n ? chest.rules.reserveTarget : 300_000_000n; // 300 USDC ceiling when turning it on
+    const next: Rules = { ...chest.rules, reserveBps: Math.round(pctNext * 100), reserveTarget: target };
     return send(t("tx.agentVote"), {
       address: chest.address, abi: collectiveAbi, functionName: "propose",
       args: [kindIndex("SetRules"), encodeAbiParameters(RULES_T, [next]), d.ref],

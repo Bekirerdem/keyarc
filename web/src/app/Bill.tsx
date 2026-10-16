@@ -4,7 +4,6 @@ import { isAddress, keccak256, parseEventLogs, toHex, type Address, type Hex } f
 import { useConnection } from "wagmi";
 import { collectiveAbi, factoryAbi } from "../lib/abi";
 import { AGENT, FACTORY } from "../lib/contracts";
-import { AGENT_URL } from "../lib/agent";
 import { toUsdc, usdc } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { saveNames, useMyChests, loadNames } from "../lib/team";
@@ -13,15 +12,19 @@ import { useChest } from "./useChest";
 import { Brand, OnArc, Wallet } from "./Wallet";
 
 const ZERO = "0x0000000000000000000000000000000000000000" as Address;
-const PERIODS = [
-  { label: "new.p1w", s: 7 * 86400 },
-  { label: "new.p2w", s: 14 * 86400 },
-  { label: "new.p1m", s: 30 * 86400 },
+const DAY = 86_400;
+const DUE = [
+  { label: "b.due7", days: 7 },
+  { label: "b.due14", days: 14 },
+  { label: "b.due30", days: 30 },
+  { label: "b.dueNone", days: 0 },
 ];
+/** The window the agent's limits apply to. Shares themselves never wait: they go out when the client pays. */
+const LIMITS_WINDOW = 30 * DAY;
 
 type Person = { name: string; address: string; share: string };
 
-/** Even split in whole basis points; the last person absorbs the remainder. */
+/** Even split in whole percents; the last person absorbs the remainder. */
 const evenShares = (n: number) => Array.from({ length: n }, (_, i) => (i === n - 1 ? 100 - Math.floor(100 / n) * (n - 1) : Math.floor(100 / n)).toString());
 
 export default function Bill() {
@@ -30,7 +33,7 @@ export default function Bill() {
   const [params] = useSearchParams();
   const mine = useMyChests(me);
   const [team, setTeam] = useState<Address | "new">("new");
-  const [done, setDone] = useState<{ chest: Address; id: Hex } | null>(null);
+  const [done, setDone] = useState<{ chest: Address; id: Hex; others: string[] } | null>(null);
 
   // land on the team named in ?team=, else the newest one, else a new team
   useEffect(() => {
@@ -56,7 +59,7 @@ export default function Bill() {
         </div>
       </aside>
       {done ? (
-        <Done chest={done.chest} id={done.id} onAnother={() => setDone(null)} />
+        <Done {...done} onAnother={() => setDone(null)} />
       ) : (
         <BillForm key={team} team={team} setTeam={setTeam} teams={mine.data ?? []} me={me} onDone={setDone} />
       )}
@@ -69,7 +72,7 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
   setTeam: (t: Address | "new") => void;
   teams: { address: Address; name: string }[];
   me?: Address;
-  onDone: (d: { chest: Address; id: Hex }) => void;
+  onDone: (d: { chest: Address; id: Hex; others: string[] }) => void;
 }) {
   const { t } = useLang();
   const { send, busy } = useTx();
@@ -81,9 +84,10 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
   const [job, setJob] = useState("");
   const [amount, setAmount] = useState("");
   const [payer, setPayer] = useState("");
-  const [reservePct, setReservePct] = useState("10");
-  const [reserveTarget, setReserveTarget] = useState("500");
-  const [period, setPeriod] = useState(30 * 86400);
+  const [dueDays, setDueDays] = useState(14);
+  const [sharedOn, setSharedOn] = useState(false);
+  const [reservePct, setReservePct] = useState("5");
+  const [reserveTarget, setReserveTarget] = useState("300");
   const [useAgent, setUseAgent] = useState(true);
 
   // an existing team brings its members (with any names saved in this browser)
@@ -98,8 +102,9 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
   }, [me, team]);
 
   const isNew = team === "new";
-  const reserveBps = isNew ? Math.round(Number(reservePct) * 100) : (chest?.rules.reserveBps ?? 0);
+  const reserveBps = isNew ? (sharedOn ? Math.round(Number(reservePct) * 100) : 0) : (chest?.rules.reserveBps ?? 0);
   const total = people.reduce((s, p) => s + (Number(p.share) || 0), 0);
+  const noteBytes = new TextEncoder().encode(job.trim()).length;
 
   const errors = useMemo(() => {
     const e: string[] = [];
@@ -108,16 +113,27 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
     if (addrs.some((a) => !isAddress(a))) e.push(t("b.err.addr"));
     if (new Set(addrs.map((a) => a.toLowerCase())).size !== addrs.length) e.push(t("b.err.dup"));
     if (me && isNew && !addrs.some((a) => a.toLowerCase() === me.toLowerCase())) e.push(t("b.err.me"));
+    if (!job.trim()) e.push(t("b.err.job"));
+    if (noteBytes > 280) e.push(t("b.err.jobLong"));
     if (!(Number(amount) > 0)) e.push(t("b.err.amount"));
     if (Math.abs(total - 100) > 1e-9) e.push(t("b.err.total", { n: total }));
     if (payer.trim() && !isAddress(payer.trim())) e.push(t("b.err.payer"));
+    if (isNew && sharedOn && !(Number(reservePct) > 0 && Number(reservePct) <= 50)) e.push(t("b.err.reserve"));
     return e;
-  }, [people, isNew, teamName, me, amount, total, payer, t]);
+  }, [people, isNew, teamName, me, job, noteBytes, amount, total, payer, sharedOn, reservePct, t]);
 
-  // preview: at most this much goes to the reserve (less once the reserve is full)
+  // preview: exactly what the chest will do, unless the shared-costs reserve is already full (then nobody gives anything)
   const gross = Number(amount) > 0 ? toUsdc(amount) : 0n;
-  const toReserve = (gross * BigInt(reserveBps)) / 10_000n;
+  const reserveFull = !isNew && !!chest && chest.reserve >= chest.rules.reserveTarget;
+  const toReserve = reserveFull ? 0n : (gross * BigInt(reserveBps)) / 10_000n;
   const net = gross - toReserve;
+  const workers = people.filter((p) => Number(p.share) > 0);
+  const each = (p: Person) => {
+    const bps = BigInt(Math.round((Number(p.share) || 0) * 100));
+    if (p !== workers[workers.length - 1]) return (net * bps) / 10_000n;
+    return net - workers.slice(0, -1).reduce((s, w) => s + (net * BigInt(Math.round(Number(w.share) * 100))) / 10_000n, 0n);
+  };
+  const others = workers.filter((p) => !me || p.address.trim().toLowerCase() !== me.toLowerCase());
 
   async function submit() {
     const contributors = people.map((p) => p.address.trim() as Address);
@@ -132,12 +148,12 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
           contributors,
           {
             reserveBps,
-            reserveTarget: toUsdc(reserveTarget),
+            reserveTarget: sharedOn ? toUsdc(reserveTarget || "0") : 0n,
             autoAttributeCap: toUsdc("100"),
             expenseCapPerPeriod: toUsdc("100"),
             quorumBps: 5001, // more than half; the contract refuses anything lower
-            timelock: 86400,
-            periodLength: period,
+            timelock: DAY,
+            periodLength: LIMITS_WINDOW,
           },
           useAgent ? AGENT : ZERO,
         ],
@@ -151,28 +167,20 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
     saveNames(chestAddr, Object.fromEntries(people.map((p) => [p.address.trim(), p.name])));
 
     // only the people with a share are on the invoice
-    const workers = people.filter((p) => Number(p.share) > 0);
     const shares = workers.map((p) => Math.round(Number(p.share) * 100));
     shares[shares.length - 1] += 10_000 - shares.reduce((a, b) => a + b, 0); // absorb rounding
     const salt = keccak256(toHex(`${Date.now()}-${Math.random()}`));
+    const dueAt = dueDays ? BigInt(Math.floor(Date.now() / 1000) + dueDays * DAY) : 0n;
     const receipt = await send(t("tx.createInvoice"), {
       address: chestAddr,
       abi: collectiveAbi,
       functionName: "createInvoice",
-      args: [salt, toUsdc(amount), (payer.trim() || ZERO) as Address, workers.map((p) => p.address.trim() as Address), shares],
+      args: [salt, toUsdc(amount), (payer.trim() || ZERO) as Address, dueAt, workers.map((p) => p.address.trim() as Address), shares, job.trim()],
     });
     if (!receipt) return;
     const [inv] = parseEventLogs({ abi: collectiveAbi, logs: receipt.logs, eventName: "InvoiceCreated" });
     if (!inv) return;
-    // what the job was for helps the agent match a payment later; best effort
-    if (job.trim()) {
-      void fetch(`${AGENT_URL}/invoice-note?chest=${chestAddr}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: inv.args.id, note: job.trim() }),
-      }).catch(() => {});
-    }
-    onDone({ chest: chestAddr, id: inv.args.id });
+    onDone({ chest: chestAddr, id: inv.args.id, others: others.map((p) => p.name.trim() || `${p.address.slice(0, 6)}…`) });
   }
 
   const set = (i: number, k: keyof Person, v: string) => setPeople(people.map((p, j) => (j === i ? { ...p, [k]: v } : p)));
@@ -205,7 +213,13 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
           <div className="label">{t("b.job")}</div>
           <div className="grid2" style={{ marginTop: 10 }}>
             <label className="field"><span className="hint">{t("b.jobName")}</span><input className="input" value={job} onChange={(e) => setJob(e.target.value)} placeholder={t("b.jobNamePh")} /></label>
-            <label className="field"><span className="hint">{t("b.amount")}</span><input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="2000" /></label>
+            <label className="field"><span className="hint">{t("b.amount")}</span><input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="2400" /></label>
+          </div>
+          <div className="grid2" style={{ marginTop: 10 }}>
+            <label className="field"><span className="hint">{t("b.due")}</span>
+              <select className="input" value={dueDays} onChange={(e) => setDueDays(Number(e.target.value))}>{DUE.map((d) => <option key={d.days} value={d.days}>{t(d.label)}</option>)}</select>
+            </label>
+            <p className="hint" style={{ alignSelf: "end" }}>{t("b.public")}</p>
           </div>
         </div>
 
@@ -220,39 +234,45 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
           <div className="billrows">
             {people.map((p, i) => {
               const mineRow = me && p.address.toLowerCase() === me.toLowerCase();
-              const each = (net * BigInt(Math.round((Number(p.share) || 0) * 100))) / 10_000n;
               return (
                 <div className="billrow" key={i}>
                   <input className="input" aria-label={t("b.name")} placeholder={mineRow ? t("b.you") : t("b.name")} value={p.name} onChange={(e) => set(i, "name", e.target.value)} />
                   <input className="input wide" aria-label={t("b.addr")} placeholder="0x…" value={p.address} disabled={!isNew} onChange={(e) => set(i, "address", e.target.value)} />
                   <label className="pct"><input className="input" inputMode="decimal" aria-label="%" value={p.share} onChange={(e) => set(i, "share", e.target.value)} /><span className="mono">%</span></label>
-                  <span className="hint gets">{gross > 0n ? t("b.gets", { amt: usdc(each) }) : ""}</span>
+                  <span className="hint gets">{gross > 0n && Number(p.share) > 0 ? t("b.gets", { amt: usdc(each(p)) }) : ""}</span>
                   {isNew && people.length > 1 && i > 0 && <button className="btn ghost small" onClick={() => setPeople(people.filter((_, j) => j !== i))}>{t("b.remove")}</button>}
                 </div>
               );
             })}
           </div>
           {isNew && <button className="btn ghost small" style={{ marginTop: 10 }} onClick={() => setPeople([...people, { name: "", address: "", share: "0" }])}>{t("b.addPerson")}</button>}
-          {gross > 0n && reserveBps > 0 && <p className="mono" style={{ marginTop: 12 }}>{t("b.reserveCut", { amt: usdc(toReserve) })}</p>}
+          {isNew && people.length > 1 && <p className="hint" style={{ marginTop: 10 }}>{t("b.walletHint")}</p>}
+          {gross > 0n && toReserve > 0n && <p className="mono" style={{ marginTop: 12 }}>{t("b.reserveCut", { amt: usdc(toReserve) })}</p>}
         </div>
+
+        {isNew && (
+          <div className="card kraft">
+            <label className="row" style={{ alignItems: "flex-start" }}>
+              <input type="checkbox" checked={sharedOn} onChange={(e) => setSharedOn(e.target.checked)} style={{ marginTop: 4 }} />
+              <span><b className="mono">{t("b.sharedOn")}</b><br /><span className="hint">{t("b.sharedHint")}</span></span>
+            </label>
+            {sharedOn && (
+              <div className="grid2" style={{ marginTop: 12 }}>
+                <label className="field"><span className="hint">{t("b.reservePct")}</span><input className="input" inputMode="decimal" value={reservePct} onChange={(e) => setReservePct(e.target.value)} /></label>
+                <label className="field"><span className="hint">{t("b.reserveTarget")}</span><input className="input" inputMode="decimal" value={reserveTarget} onChange={(e) => setReserveTarget(e.target.value)} /></label>
+              </div>
+            )}
+          </div>
+        )}
 
         <details className="card kraft">
           <summary className="label" style={{ cursor: "pointer" }}>{t("b.advanced")}</summary>
           <div className="stack" style={{ marginTop: 12 }}>
             {isNew && (
-              <>
-                <div className="grid2">
-                  <label className="field"><span className="hint">{t("b.reservePct")}</span><input className="input" inputMode="decimal" value={reservePct} onChange={(e) => setReservePct(e.target.value)} /></label>
-                  <label className="field"><span className="hint">{t("b.reserveTarget")}</span><input className="input" inputMode="decimal" value={reserveTarget} onChange={(e) => setReserveTarget(e.target.value)} /></label>
-                </div>
-                <label className="field"><span className="hint">{t("b.period")}</span>
-                  <select className="input" value={period} onChange={(e) => setPeriod(Number(e.target.value))}>{PERIODS.map((p) => <option key={p.s} value={p.s}>{t(p.label)}</option>)}</select>
-                </label>
-                <label className="row" style={{ alignItems: "flex-start" }}>
-                  <input type="checkbox" checked={useAgent} onChange={(e) => setUseAgent(e.target.checked)} style={{ marginTop: 4 }} />
-                  <span><b className="mono">{t("b.agentOn")}</b><br /><span className="hint">{t("b.agentHint")}</span></span>
-                </label>
-              </>
+              <label className="row" style={{ alignItems: "flex-start" }}>
+                <input type="checkbox" checked={useAgent} onChange={(e) => setUseAgent(e.target.checked)} style={{ marginTop: 4 }} />
+                <span><b className="mono">{t("b.agentOn")}</b><br /><span className="hint">{t("b.agentHint")}</span></span>
+              </label>
             )}
             <label className="field"><span className="hint">{t("b.payer")}</span><input className="input" value={payer} onChange={(e) => setPayer(e.target.value)} placeholder="0x…" /></label>
           </div>
@@ -264,6 +284,7 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
           <div className="label">{t("b.summary")}</div>
           {gross > 0n && <div className="amount" style={{ marginTop: 10 }}>{usdc(gross)}<small>USDC</small></div>}
           <p className="mono" style={{ marginTop: 10, opacity: 0.85 }}>{isNew ? t("b.signs2") : t("b.signs1")}</p>
+          {others.length > 0 && <p className="mono" style={{ marginTop: 8, opacity: 0.85 }}>{t("b.thenAgree", { n: others.length })}</p>}
           {errors.length > 0 && <ul className="mono" style={{ marginTop: 10, paddingLeft: 16, display: "grid", gap: 6 }}>{errors.map((e) => <li key={e}>{e}</li>)}</ul>}
           <div style={{ marginTop: 16 }}>
             <OnArc>
@@ -276,7 +297,7 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
   );
 }
 
-function Done({ chest, id, onAnother }: { chest: Address; id: Hex; onAnother: () => void }) {
+function Done({ chest, id, others, onAnother }: { chest: Address; id: Hex; others: string[]; onAnother: () => void }) {
   const { t } = useLang();
   const [copied, setCopied] = useState(false);
   const link = `${window.location.origin}/pay/${chest}/${id}`;
@@ -285,8 +306,8 @@ function Done({ chest, id, onAnother }: { chest: Address; id: Hex; onAnother: ()
       <main className="main">
         <div className="card tape no-pin">
           <div className="label">{t("d.label")}</div>
-          <h1 className="title" style={{ marginTop: 6 }}>{t("d.title")}</h1>
-          <p className="note" style={{ marginTop: 12 }}>{t("d.body")}</p>
+          <h1 className="title" style={{ marginTop: 6 }}>{others.length ? t("d.titleTeam") : t("d.title")}</h1>
+          <p className="note" style={{ marginTop: 12 }}>{others.length ? t("d.bodyTeam", { who: others.join(", ") }) : t("d.body")}</p>
         </div>
         <div className="card tilt-l">
           <div className="paylink mono">{link}</div>

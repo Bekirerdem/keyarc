@@ -186,8 +186,8 @@ html.has-cursor .landing,html.has-cursor .landing *{cursor:none!important}
 .landing .ptape .ticks i{width:1px;height:10px;background:rgba(29,26,22,.55)}
 .landing .ptape .ticks i:nth-child(5n+1){height:16px}
 .landing .ptape .days{position:absolute;left:18px;right:18px;top:32px;display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:10px;color:var(--ink-soft)}
-.landing .ptape .now{position:absolute;top:0;bottom:0;width:2px;background:var(--thread);left:22%}
-.landing .ptape .now::after{content:"today";position:absolute;bottom:6px;left:6px;font-family:var(--f-mono);font-size:10px;color:var(--thread);text-transform:uppercase;letter-spacing:.08em}
+.landing .ptape .now{position:absolute;top:0;bottom:0;width:2px;background:var(--thread);left:2%}
+.landing .ptape .now::after{content:"now";position:absolute;bottom:6px;left:6px;font-family:var(--f-mono);font-size:10px;color:var(--thread);text-transform:uppercase;letter-spacing:.08em}
 .landing .flag{position:absolute;bottom:10px;padding:5px 9px 5px;font-family:var(--f-mono);font-size:11px;background:var(--paper);box-shadow:0 6px 10px -6px rgba(0,0,0,.55);white-space:nowrap}
 .landing .flag::before{content:"";position:absolute;left:8px;top:-8px;width:9px;height:9px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3c4 0 15%,#c9a23b 45%,#5d4510 100%)}
 .landing .flag b{color:var(--thread);font-weight:600}
@@ -329,7 +329,7 @@ body.landing-body #root{width:auto;max-width:none;margin:0;text-align:left;borde
 
 /* off-board cards wait outside the viewport before they fly in: clip them without making a scroll container */
 .landing{overflow-x:clip}
-.landing:lang(tr) .ptape .now::after{content:"bugün"}
+.landing:lang(tr) .ptape .now::after{content:"şimdi"}
 
 /* ---------- 10-12 pass: word-safe headline, title masks, landing shadow, close spacing ---------- */
 .landing .hero-copy{width:min(50vw,800px)}

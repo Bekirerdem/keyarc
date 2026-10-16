@@ -17,7 +17,7 @@ const RULES_T = [{
   ],
 }] as const;
 
-function describe(p: Proposal, t: (k: string, v?: Record<string, string | number>) => string, dur: (s: number) => string): string {
+function describe(p: Proposal, t: (k: string, v?: Record<string, string | number>) => string): string {
   const k = ProposalKind[p.kind];
   try {
     switch (k) {
@@ -49,7 +49,7 @@ function describe(p: Proposal, t: (k: string, v?: Record<string, string | number
       }
       case "SetRules": {
         const r = decodeAbiParameters(RULES_T, p.payload)[0];
-        return t("vote.d.rules", { pct: pct(r.reserveBps), amt: usdc(r.reserveTarget), d: dur(r.periodLength) });
+        return r.reserveBps > 0 ? t("vote.d.rules", { pct: pct(r.reserveBps), amt: usdc(r.reserveTarget) }) : t("vote.d.rulesOff");
       }
     }
   } catch { /* fall through */ }
@@ -80,7 +80,7 @@ export function Votes({ chest, isMember, me, onChange }: { chest: Chest; isMembe
           return (
             <div key={p.id} className="card no-pin" style={{ background: "var(--paper-2)", animation: "none" }}>
               <div className="between">
-                <span className="mono">#{p.id} · {describe(p, t, dur)}</span>
+                <span className="mono">#{p.id} · {describe(p, t)}</span>
                 <span className="stamp">{p.votes}/{p.votesNeeded}</span>
               </div>
               <div className="hint" style={{ marginTop: 6 }}>
@@ -105,7 +105,7 @@ export function Votes({ chest, isMember, me, onChange }: { chest: Chest; isMembe
         <details style={{ marginTop: 14 }}>
           <summary className="label" style={{ cursor: "pointer" }}>{t("vote.past")}</summary>
           <ul className="mono" style={{ marginTop: 8, paddingLeft: 16, display: "grid", gap: 4 }}>
-            {past.map((p) => <li key={p.id}>#{p.id} {describe(p, t, dur)} — {t(p.executed ? "vote.carried" : p.cancelled ? "vote.withdrawn" : "vote.lapsed")}</li>)}
+            {past.map((p) => <li key={p.id}>#{p.id} {describe(p, t)} — {t(p.executed ? "vote.carried" : p.cancelled ? "vote.withdrawn" : "vote.lapsed")}</li>)}
           </ul>
         </details>
       )}

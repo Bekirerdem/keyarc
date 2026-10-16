@@ -230,6 +230,9 @@ table.simple td, table.simple th { text-align: left; padding: 8px 4px; border-bo
 .remind { display: grid; gap: 10px; }
 .remind textarea.input { font-size: 13px; line-height: 1.5; resize: vertical; white-space: pre-wrap; }
 .remind .row { flex-wrap: wrap; }
+.invtable td { vertical-align: top; }
+.invtable td .hint { margin-top: 2px; }
+.hint.late { color: var(--thread); font-weight: 600; }
 
 /* ── app footer ──────────────────────────────── */
 .appfoot { margin-top: 8px; padding: 0 28px 28px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }

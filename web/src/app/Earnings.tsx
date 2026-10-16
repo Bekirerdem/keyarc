@@ -12,14 +12,15 @@ import { useLang } from "../lib/i18n";
 import { collectiveLogs } from "../lib/logs";
 import { useMyChests, type MyChest } from "../lib/team";
 import { useTx } from "../lib/tx";
+import { invoicesFrom } from "./useChest";
 import { Brand, OnArc, Wallet } from "./Wallet";
 
 const ZERO = "0x0000000000000000000000000000000000000000" as Address;
 
-type Row = { at: number; team: string; chest: Address; kind: "paid" | "deferred" | "claimed"; amount: bigint; tx: Hex };
+type Row = { at: number; team: string; chest: Address; kind: "paid" | "deferred" | "claimed"; amount: bigint; tx: Hex; job: string };
 type TeamState = { chest: MyChest; payoutTo: Address; owed: bigint; pending: bigint };
 
-/** Everything the connected member earned, from each chest's own events. */
+/** Everything the connected member earned, from each chest's own events, with the job each payment was for. */
 function useEarnings(me: Address | undefined, chests: MyChest[] | undefined) {
   return useQuery({
     queryKey: ["earnings", me, chests?.map((c) => c.address).join()],
@@ -29,25 +30,29 @@ function useEarnings(me: Address | undefined, chests: MyChest[] | undefined) {
       const rows: Row[] = [];
       const teams: TeamState[] = [];
       for (const c of chests!) {
-        const period = await publicClient.readContract({ address: c.address, abi: collectiveAbi, functionName: "period" });
-        const [payoutTo, owed, credit, totalCredit, pool] = await publicClient.multicall({
+        const [payoutTo, owed] = await publicClient.multicall({
           allowFailure: false,
           contracts: [
             { address: c.address, abi: collectiveAbi, functionName: "payoutTo", args: [me!] },
             { address: c.address, abi: collectiveAbi, functionName: "owed", args: [me!] },
-            { address: c.address, abi: collectiveAbi, functionName: "credit", args: [period, me!] },
-            { address: c.address, abi: collectiveAbi, functionName: "totalCredit", args: [period] },
-            { address: c.address, abi: collectiveAbi, functionName: "pool" },
           ],
         });
-        teams.push({ chest: c, payoutTo, owed, pending: totalCredit > 0n ? (pool * credit) / totalCredit : 0n });
+        const events = await collectiveLogs(c.address);
+        const invoices = invoicesFrom(events);
+        const jobOf = new Map(invoices.map((i) => [i.id.toLowerCase(), i.note]));
+        // my share of invoices the client hasn't paid yet, before any shared-costs cut
+        const pending = invoices.filter((i) => i.status === 1).reduce((s, i) => {
+          const k = i.contributors.findIndex((m) => m.toLowerCase() === lower);
+          return k < 0 ? s : s + (i.amount * BigInt(i.sharesBps[k])) / 10_000n;
+        }, 0n);
+        teams.push({ chest: c, payoutTo, owed, pending });
 
-        for (const e of await collectiveLogs(c.address)) {
-          const a = e.args as { member?: string; amount?: bigint };
+        for (const e of events) {
+          const a = e.args as { member?: string; amount?: bigint; source?: Hex };
           if (!a.member || a.member.toLowerCase() !== lower || a.amount === undefined) continue;
           const kind = e.eventName === "Paid" ? "paid" : e.eventName === "PayoutDeferred" ? "deferred" : e.eventName === "Claimed" ? "claimed" : null;
           if (!kind) continue;
-          rows.push({ at: Number(e.blockNumber), team: c.name, chest: c.address, kind, amount: a.amount, tx: e.transactionHash });
+          rows.push({ at: Number(e.blockNumber), team: c.name, chest: c.address, kind, amount: a.amount, tx: e.transactionHash, job: (a.source && jobOf.get(a.source.toLowerCase())) || "" });
         }
       }
       // block number → time, one lookup per distinct block
@@ -62,8 +67,9 @@ function useEarnings(me: Address | undefined, chests: MyChest[] | undefined) {
 }
 
 function csv(rows: Row[], t: (k: string) => string) {
-  const head = ["date", "team", "type", "amount_usdc", "tx"].join(",");
-  const lines = rows.map((r) => [new Date(r.at * 1000).toISOString(), `"${r.team.replaceAll('"', '""')}"`, t(`e.${r.kind}`), formatUnits(r.amount, 6), r.tx].join(","));
+  const q = (s: string) => `"${s.replaceAll('"', '""')}"`;
+  const head = ["date", "team", "for", "type", "amount_usdc", "tx"].join(",");
+  const lines = rows.map((r) => [new Date(r.at * 1000).toISOString(), q(r.team), q(r.job), t(`e.${r.kind}`), formatUnits(r.amount, 6), r.tx].join(","));
   const blob = new Blob([[head, ...lines].join("\n")], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -126,12 +132,13 @@ export default function Earnings() {
                 <p className="note muted" style={{ marginTop: 12 }}>{t("e.none")}</p>
               ) : (
                 <table className="simple" style={{ marginTop: 12 }}>
-                  <thead><tr><th>{t("e.when")}</th><th>{t("e.team")}</th><th>{t("e.what")}</th><th>{t("e.amount")}</th><th /></tr></thead>
+                  <thead><tr><th>{t("e.when")}</th><th>{t("e.team")}</th><th>{t("e.for")}</th><th>{t("e.what")}</th><th>{t("e.amount")}</th><th /></tr></thead>
                   <tbody>
                     {data.data.rows.map((r) => (
                       <tr key={`${r.tx}-${r.kind}`}>
                         <td>{when(r.at)}</td>
                         <td>{r.team}</td>
+                        <td>{r.job}</td>
                         <td><span className={`chip ${r.kind === "paid" ? "paid" : r.kind === "deferred" ? "open" : ""}`}>{t(`e.${r.kind}`)}</span></td>
                         <td>{usdc(r.amount)} USDC</td>
                         <td><a href={explorerTx(r.tx)} target="_blank" rel="noreferrer">{short(r.tx)} ↗</a></td>

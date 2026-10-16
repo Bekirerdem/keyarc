@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Address, Hex } from "viem";
 import { collectiveAbi } from "../lib/abi";
 import { publicClient } from "../lib/arc";
+import { versionOf } from "../lib/contracts";
 import { collectiveLogs, type CollectiveEvent } from "../lib/logs";
 
 export type Rules = {
@@ -30,16 +31,26 @@ export type Proposal = {
   iVoted: boolean;
 };
 
+/** One share that went out: to whom, where it landed and how much. */
+export type Payout = { member: Address; to: Address; amount: bigint; tx: Hex };
+
 export type Invoice = {
   id: Hex;
   creator: Address;
   amount: bigint;
   payer: Address;
   status: number;
+  dueAt: number;
+  note: string;
   contributors: readonly Address[];
   sharesBps: readonly number[];
+  /** Lower-cased addresses of the contributors who agreed to their share (the creator agrees by writing it). */
+  agreed: Set<string>;
   createdTx: Hex;
+  createdBlock: bigint;
   paidTx?: Hex;
+  toReserve?: bigint;
+  payouts: Payout[];
 };
 
 export type Chest = {
@@ -48,22 +59,32 @@ export type Chest = {
   members: readonly Address[];
   agent: Address;
   rules: Rules;
+  /** Set aside for shared costs. Shares never wait in the chest: they go out when the client pays. */
   reserve: bigint;
-  pool: bigint;
   unattributed: bigint;
-  period: bigint;
-  periodStart: number;
+  attributeLeft: bigint;
+  expenseLeft: bigint;
   governanceEpoch: bigint;
-  credits: { member: Address; credit: bigint }[];
-  totalCredit: bigint;
   owedToMe: bigint;
   proposals: Proposal[];
 };
 
+/** A chest made by an earlier Keyarc version: its history stays on Arc, the app no longer runs it. */
+export class OlderChest extends Error {
+  readonly version: string;
+  constructor(version: string) {
+    super(`chest runs Keyarc ${version}`);
+    this.version = version;
+  }
+}
+
 const c = (address: Address) => ({ address, abi: collectiveAbi }) as const;
 
 export async function readChest(address: Address, me?: Address): Promise<Chest> {
-  const [name, members, agent, rules, reserve, pool, unattributed, period, periodStart, epoch, proposalCount] =
+  const version = versionOf(await publicClient.getCode({ address }));
+  if (version !== "current") throw version ? new OlderChest(version) : new Error("not a Keyarc chest");
+
+  const [name, members, agent, rules, reserve, unattributed, room, epoch, proposalCount, owedToMe] =
     await publicClient.multicall({
       allowFailure: false,
       contracts: [
@@ -72,30 +93,13 @@ export async function readChest(address: Address, me?: Address): Promise<Chest> 
         { ...c(address), functionName: "agent" },
         { ...c(address), functionName: "rules" },
         { ...c(address), functionName: "reserve" },
-        { ...c(address), functionName: "pool" },
         { ...c(address), functionName: "unattributed" },
-        { ...c(address), functionName: "period" },
-        { ...c(address), functionName: "periodStart" },
+        { ...c(address), functionName: "agentRoom" },
         { ...c(address), functionName: "governanceEpoch" },
         { ...c(address), functionName: "proposalCount" },
+        { ...c(address), functionName: "owed", args: [me ?? "0x0000000000000000000000000000000000000000"] },
       ],
     });
-
-  const [creditors, totalCredit, owedToMe] = await publicClient.multicall({
-    allowFailure: false,
-    contracts: [
-      { ...c(address), functionName: "creditors", args: [period] },
-      { ...c(address), functionName: "totalCredit", args: [period] },
-      { ...c(address), functionName: "owed", args: [me ?? "0x0000000000000000000000000000000000000000"] },
-    ],
-  });
-
-  const creditValues = creditors.length
-    ? await publicClient.multicall({
-        allowFailure: false,
-        contracts: creditors.map((m) => ({ ...c(address), functionName: "credit", args: [period, m] }) as const),
-      })
-    : [];
 
   const n = Number(proposalCount);
   const ids = Array.from({ length: Math.min(n, 30) }, (_, i) => n - 1 - i); // newest 30
@@ -129,13 +133,10 @@ export async function readChest(address: Address, me?: Address): Promise<Chest> 
       periodLength: rules.periodLength,
     },
     reserve,
-    pool,
     unattributed,
-    period,
-    periodStart: Number(periodStart),
+    attributeLeft: room[0],
+    expenseLeft: room[1],
     governanceEpoch: epoch,
-    credits: creditors.map((m, i) => ({ member: m, credit: creditValues[i] as bigint })),
-    totalCredit,
     owedToMe,
     proposals: props.map((p, k) => ({
       id: ids[k],
@@ -160,6 +161,7 @@ export function useChest(address?: Address, me?: Address) {
     queryKey: ["chest", address, me],
     enabled: !!address,
     refetchInterval: 20_000,
+    retry: (n, e) => !(e instanceof OlderChest) && n < 3,
     queryFn: () => readChest(address!, me),
   });
 }
@@ -173,22 +175,57 @@ export function useChestEvents(address?: Address) {
   });
 }
 
-/** Invoices rebuilt from InvoiceCreated / InvoicePaid / InvoiceCancelled events. */
+/** Invoices rebuilt from the chest's events: who wrote them, who agreed, how each was paid out. Newest first. */
 export function invoicesFrom(events: CollectiveEvent[]): Invoice[] {
-  const map = new Map<Hex, Invoice>();
+  const map = new Map<string, Invoice>();
+  const get = (id: Hex) => map.get(id.toLowerCase());
   for (const e of events) {
+    const a = e.args as Record<string, unknown>;
     if (e.eventName === "InvoiceCreated") {
-      const a = e.args as { id: Hex; creator: Address; amount: bigint; payer: Address; contributors: readonly Address[]; sharesBps: readonly number[] };
-      map.set(a.id, { ...a, status: 1, createdTx: e.transactionHash });
+      const contributors = a.contributors as readonly Address[];
+      const creator = a.creator as Address;
+      map.set((a.id as Hex).toLowerCase(), {
+        id: a.id as Hex,
+        creator,
+        amount: a.amount as bigint,
+        payer: a.payer as Address,
+        status: 1,
+        dueAt: Number((a.dueAt as bigint | undefined) ?? 0n),
+        note: (a.note as string | undefined) ?? "",
+        contributors,
+        sharesBps: a.sharesBps as readonly number[],
+        agreed: new Set(contributors.filter((m) => m.toLowerCase() === creator.toLowerCase()).map((m) => m.toLowerCase())),
+        createdTx: e.transactionHash,
+        createdBlock: e.blockNumber,
+        payouts: [],
+      });
+    } else if (e.eventName === "InvoiceApproved") {
+      get(a.id as Hex)?.agreed.add((a.member as string).toLowerCase());
     } else if (e.eventName === "InvoicePaid") {
-      const a = e.args as { id: Hex };
-      const inv = map.get(a.id);
-      if (inv) map.set(a.id, { ...inv, status: 2, paidTx: e.transactionHash });
+      const inv = get(a.id as Hex);
+      if (inv) Object.assign(inv, { status: 2, paidTx: e.transactionHash, toReserve: a.toReserve as bigint });
     } else if (e.eventName === "InvoiceCancelled") {
-      const a = e.args as { id: Hex };
-      const inv = map.get(a.id);
-      if (inv) map.set(a.id, { ...inv, status: 3 });
+      const inv = get(a.id as Hex);
+      if (inv) inv.status = 3;
+    } else if (e.eventName === "Paid" || e.eventName === "PayoutDeferred") {
+      const inv = get(a.source as Hex);
+      if (inv) inv.payouts.push({ member: a.member as Address, to: ((a.to as Address | undefined) ?? a.member) as Address, amount: a.amount as bigint, tx: e.transactionHash });
     }
   }
   return [...map.values()].reverse();
+}
+
+/** Contributors on an invoice who haven't agreed to their share yet. */
+export const waitingOn = (inv: Invoice) => inv.contributors.filter((m) => !inv.agreed.has(m.toLowerCase()));
+
+/** USDC paid to each member, from the chest's Paid events. */
+export function paidByMember(events: CollectiveEvent[]): Map<string, bigint> {
+  const out = new Map<string, bigint>();
+  for (const e of events) {
+    if (e.eventName !== "Paid") continue;
+    const a = e.args as { member: Address; amount: bigint };
+    const k = a.member.toLowerCase();
+    out.set(k, (out.get(k) ?? 0n) + a.amount);
+  }
+  return out;
 }
