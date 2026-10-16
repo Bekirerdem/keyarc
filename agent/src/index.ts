@@ -1,17 +1,19 @@
 import { getAddress, isAddress, recoverMessageAddress, type Address, type Hex } from "viem";
-import { agentWallet, collectiveAbi, isHex32, publicClient, readChest } from "./chain";
+import { agentWallet, collectiveAbi, isHex32, publicClient } from "./chain";
 import { fastFeeBps, queueBurn, relayBurns, SOURCE_DOMAINS } from "./cctp";
 import { runCollections, setInvoiceNote } from "./collections";
 import type { Env } from "./env";
 import { ClaudeJudge, NoJudge, type Judge } from "./llm";
-import { listDecisions, saveDecision, seal } from "./log";
-import { chestLogs, isKeyarcClone, NotAChest } from "./logindex";
+import { listDecisions } from "./log";
+import { chestLogs, isCurrentClone, NotAChest } from "./logindex";
 import { getVendors, handleInvoiceEmail, putVendors, setInbox, type Vendor } from "./payables";
-import { draftReminder } from "./reminders";
+import { draftReminder, rememberLang, runReminders } from "./reminders";
+import deployment from "../../deployments/arc-mainnet.json";
 import { runTreasuryNote } from "./treasury";
 
 const judgeFor = (env: Env): Judge => (env.ANTHROPIC_API_KEY ? new ClaudeJudge(env.ANTHROPIC_API_KEY) : new NoJudge());
-const chestsOf = (env: Env): Address[] => env.CHESTS.split(",").map((c) => c.trim()).filter((c) => isAddress(c)).map((c) => getAddress(c));
+// CHESTS can name extra chests; the demo chest from the deployments file is always run
+const chestsOf = (env: Env): Address[] => [deployment.demo.collective, ...env.CHESTS.split(",")].map((c) => c.trim()).filter((c) => isAddress(c)).map((c) => getAddress(c));
 const REGISTRY = "managed";
 
 /** Chests in CHESTS plus every chest that named this agent when it was opened. */
@@ -30,7 +32,7 @@ async function isManaged(env: Env, chest: Address): Promise<boolean> {
     publicClient.getCode({ address: chest }),
     publicClient.readContract({ address: chest, abi: collectiveAbi, functionName: "agent" }).catch(() => null),
   ]);
-  if (!code || !isKeyarcClone(code) || !agent || getAddress(agent) !== agentWallet(env).account.address) return false;
+  if (!code || !isCurrentClone(code) || !agent || getAddress(agent) !== agentWallet(env).account.address) return false;
   const joined = JSON.parse((await env.AGENT_KV.get(REGISTRY)) ?? "[]") as Address[];
   await env.AGENT_KV.put(REGISTRY, JSON.stringify([...joined, chest].slice(-200)));
   return true;
@@ -42,8 +44,8 @@ async function cycle(env: Env, chest: Address, opts: { forceNote?: boolean } = {
   const steps: [string, () => Promise<void>][] = [
     ["relay", () => relayBurns(env)],
     ["collections", () => runCollections(env, chest, judge)],
+    ["reminders", () => runReminders(env, chest, judge)],
     ["treasury", () => runTreasuryNote(env, chest, judge, opts.forceNote)],
-    ["payout", () => maybeDistribute(env, chest)],
   ];
   for (const [name, run] of steps) {
     try {
@@ -54,16 +56,16 @@ async function cycle(env: Env, chest: Address, opts: { forceNote?: boolean } = {
   }
 }
 
-/** Housekeeping, not a judgement call: close the period when it's over and there is something to share. */
-async function maybeDistribute(env: Env, chest: Address) {
-  const s = await readChest(chest);
-  const over = Date.now() / 1000 >= s.periodStart + s.rules.periodLength;
-  if (!over || s.pool === 0n) return;
+/**
+ * Carry a contributor's signed agreement to the chest, so agreeing to a share costs them no gas. The signature is the
+ * authorisation; the call is simulated first, so a bad or repeated signature costs the agent nothing.
+ */
+async function relayApproval(env: Env, chest: Address, id: Hex, member: Address, signature: Hex): Promise<Hex> {
   const { account, wallet } = agentWallet(env);
-  const tx = await wallet.writeContract({ address: chest, abi: collectiveAbi, functionName: "distribute", account });
+  const { request } = await publicClient.simulateContract({ address: chest, abi: collectiveAbi, functionName: "approveInvoiceFor", args: [id, member, signature], account });
+  const tx = await wallet.writeContract(request);
   await publicClient.waitForTransactionReceipt({ hash: tx });
-  const d = seal({ chest, at: Date.now(), kind: "payout", title: `Closed period #${s.period} and paid members`, facts: { pot: `${Number(s.pool) / 1e6} USDC` }, checks: [], model: null, outcome: "distributed" });
-  await saveDecision(env, { ...d, tx });
+  return tx;
 }
 
 // ── HTTP ────────────────────────────────────────────────
@@ -141,6 +143,18 @@ async function handleFetch(req: Request, env: Env): Promise<Response> {
     await queueBurn(env, { sourceDomain: source, burnTx: body.burnTx, chest });
     return json({ ok: true }, 200, h);
   }
+  if (req.method === "POST" && url.pathname === "/approve") {
+    const body = (await req.json()) as { id?: string; member?: string; signature?: string };
+    if (!isHex32(body.id) || !isAddress(String(body.member)) || !/^0x[0-9a-fA-F]{130,}$/.test(String(body.signature))) {
+      return json({ error: "id, member and signature required" }, 400, h);
+    }
+    try {
+      return json({ ok: true, tx: await relayApproval(env, chest, body.id, getAddress(String(body.member)), body.signature as Hex) }, 200, h);
+    } catch (e) {
+      const why = e instanceof Error ? (/BadSignature|AlreadyApproved|NotAContributor|InvoiceNotOpen/.exec(e.message)?.[0] ?? "could not relay") : "could not relay";
+      return json({ error: why }, 400, h);
+    }
+  }
   if (req.method === "POST" && url.pathname === "/invoice-note") {
     const body = (await req.json()) as { id?: string; note?: string };
     if (!isHex32(body.id) || typeof body.note !== "string") return json({ error: "id and note required" }, 400, h);
@@ -169,6 +183,8 @@ async function handleFetch(req: Request, env: Env): Promise<Response> {
     if (url.pathname === "/reminder") {
       const { id, createdTx, lang } = auth.data;
       if (!isHex32(id) || !isHex32(createdTx)) return json({ error: "id and createdTx required" }, 400, h);
+      // the agent's own overdue reminders are written in the language members use
+      await rememberLang(env, chest, lang === "tr" ? "tr" : "en");
       try {
         return json(await draftReminder(env, chest, id, createdTx, lang === "tr" ? "tr" : "en", judgeFor(env)), 200, h);
       } catch (e) {

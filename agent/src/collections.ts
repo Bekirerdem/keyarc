@@ -20,7 +20,7 @@ export function pays(inflow: bigint, invoice: bigint): boolean {
 
 /** `seen` = how many matching open invoices existed when it was last held; re-judged only when that changes. */
 export type Inflow = { tx: Hex; from: Address; amount: bigint; block: bigint; seen?: number };
-type OpenInvoice = { id: Hex; amount: bigint; payer: Address; creator: Address; block: bigint };
+export type OpenInvoice = { id: Hex; amount: bigint; payer: Address; creator: Address; block: bigint; dueAt: number; note: string };
 
 const usdc = (v: bigint) => formatUnits(v, 6);
 const cursorKey = (c: Address) => `cursor:${c.toLowerCase()}`;
@@ -41,7 +41,7 @@ const MAX_CHUNKS = 8n;
 /** Further behind than a few passes can close: take the gap from the log index instead. */
 const IDLE = (CHUNK + 1n) * MAX_CHUNKS * 3n;
 
-type SavedInvoice = { id: Hex; amount: string; payer: Address; creator: Address; block: string };
+type SavedInvoice = { id: Hex; amount: string; payer: Address; creator: Address; block: string; dueAt?: string; note?: string };
 
 /** Open invoices, kept up to date from the chest events the inflow scan already reads (one KV key per chest). */
 async function getOpenIndex(env: Env, chest: Address): Promise<SavedInvoice[]> {
@@ -53,8 +53,11 @@ export function applyInvoiceEvents(index: SavedInvoice[], events: { eventName: s
   const open = new Map(index.map((i) => [i.id.toLowerCase(), i]));
   for (const e of events) {
     if (e.eventName === "InvoiceCreated") {
-      const a = e.args as { id: Hex; amount: bigint; payer: Address; creator: Address };
-      open.set(a.id.toLowerCase(), { id: a.id, amount: a.amount.toString(), payer: a.payer, creator: a.creator, block: e.blockNumber.toString() });
+      const a = e.args as { id: Hex; amount: bigint; payer: Address; creator: Address; dueAt?: bigint; note?: string };
+      open.set(a.id.toLowerCase(), {
+        id: a.id, amount: a.amount.toString(), payer: a.payer, creator: a.creator, block: e.blockNumber.toString(),
+        dueAt: (a.dueAt ?? 0n).toString(), note: (a.note ?? "").slice(0, 280),
+      });
     } else if (e.eventName === "InvoicePaid" || e.eventName === "InvoiceCancelled") {
       open.delete((e.args as { id: Hex }).id.toLowerCase());
     }
@@ -130,8 +133,8 @@ async function savePending(env: Env, chest: Address, list: Inflow[]) {
   await env.AGENT_KV.put(pendingKey(chest), next);
 }
 
-async function openInvoices(env: Env, chest: Address): Promise<OpenInvoice[]> {
-  return (await getOpenIndex(env, chest)).map((i) => ({ ...i, amount: BigInt(i.amount), block: BigInt(i.block) }));
+export async function openInvoices(env: Env, chest: Address): Promise<OpenInvoice[]> {
+  return (await getOpenIndex(env, chest)).map((i) => ({ ...i, amount: BigInt(i.amount), block: BigInt(i.block), dueAt: Number(i.dueAt ?? "0"), note: i.note ?? "" }));
 }
 
 /** Writes per invoice: the job name from the bill page plus a pay-from-Base note leaves room for one retry. */
@@ -179,10 +182,19 @@ export async function runCollections(env: Env, chest: Address, judge: Judge) {
       stillPending.push(inflow); // nothing new to judge since it was held
       continue;
     }
-    const capLeft = state.rules.autoAttributeCap - state.attributedThisPeriod;
+    // The client can pay from Base before everyone on the invoice agreed to the shares. The chest won't settle it
+    // until they have, so wait without asking the model; it is looked at again on the next pass.
+    if (exact.length === 1) {
+      const [, , , , , pendingApprovals] = await publicClient.readContract({ address: chest, abi: collectiveAbi, functionName: "invoice", args: [exact[0].id] });
+      if (pendingApprovals > 0) {
+        stillPending.push({ ...inflow, seen: undefined });
+        continue;
+      }
+    }
+    const capLeft = state.attributeLeft;
     const candidates = await Promise.all(exact.map(async (i) => ({
       id: i.id, amountUsdc: usdc(i.amount), createdAt: `block ${i.block}`, payer: i.payer,
-      note: (await env.AGENT_KV.get(noteKey(chest, i.id))) ?? "",
+      note: [i.note, (await env.AGENT_KV.get(noteKey(chest, i.id))) ?? ""].filter(Boolean).join(" · "),
     })));
     const judgement = candidates.length
       ? await judge.pickInvoice({ inflow: { amountUsdc: usdc(inflow.amount), tx: inflow.tx, from: inflow.from, at: `block ${inflow.block}` }, candidates })
@@ -192,7 +204,7 @@ export async function runCollections(env: Env, chest: Address, judge: Judge) {
       { name: "matching invoices", ok: exact.length === 1, detail: `${exact.length} open invoice(s) paid by ${usdc(inflow.amount)} USDC` },
       { name: "model agrees", ok: !!judgement && judgement.decision === "settle" && exact.length === 1 && judgement.invoiceId.toLowerCase() === exact[0].id.toLowerCase(), detail: judgement ? `${judgement.decision} (${Math.round(judgement.confidence * 100)}%)` : "no candidate to judge" },
       { name: "confidence", ok: (judgement?.confidence ?? 0) >= 0.8, detail: `${Math.round((judgement?.confidence ?? 0) * 100)}% (needs 80%)` },
-      { name: "within agent limit", ok: exact.length === 1 && exact[0].amount <= capLeft, detail: `${usdc(capLeft)} USDC left this period` },
+      { name: "within agent limit", ok: exact.length === 1 && exact[0].amount <= capLeft, detail: `${usdc(capLeft)} USDC left this month` },
       { name: "money is in the chest", ok: exact.length === 1 && exact[0].amount <= state.unattributed, detail: `${usdc(state.unattributed)} USDC unlabelled` },
     ];
     const agree = checks[0].ok && checks[1].ok && checks[2].ok && checks[4].ok;
@@ -200,11 +212,11 @@ export async function runCollections(env: Env, chest: Address, judge: Judge) {
     const model = judgement ? { name: judge.name, output: judgement } : null;
 
     if (agree && checks[3].ok) {
-      const d = seal({ chest, at: Date.now(), kind: "inflow", title: `Matched ${usdc(inflow.amount)} USDC to an invoice`, facts, checks, model, outcome: "settled" });
+      const d = seal({ chest, at: Date.now(), kind: "inflow", title: `Matched ${usdc(inflow.amount)} USDC to an invoice and paid the team`, facts, checks, model, outcome: "settled" });
       const tx = await wallet.writeContract({ address: chest, abi: collectiveAbi, functionName: "settleInvoice", args: [exact[0].id, inflow.tx], account });
       await publicClient.waitForTransactionReceipt({ hash: tx });
       await saveDecision(env, { ...d, tx });
-      state.attributedThisPeriod += exact[0].amount;
+      state.attributeLeft -= exact[0].amount;
     } else if (agree) {
       // Clear match, but above the agent's limit: the members decide.
       const d = seal({ chest, at: Date.now(), kind: "inflow", title: `Asked members to match ${usdc(inflow.amount)} USDC`, facts, checks, model, outcome: "vote" });
@@ -227,7 +239,7 @@ function tally(stats: Stats, events: { eventName: string; args: unknown }[]) {
   const day = new Date().toISOString().slice(0, 10);
   const bucket = (stats.days[day] ??= { in: "0", out: "0" });
   for (const e of events) {
-    const a = e.args as { amount?: bigint; total?: bigint };
+    const a = e.args as { amount?: bigint };
     if (e.eventName === "InvoicePaid" || e.eventName === "Attributed") {
       stats.income = (BigInt(stats.income) + (a.amount ?? 0n)).toString();
       bucket.in = (BigInt(bucket.in) + (a.amount ?? 0n)).toString();
@@ -235,8 +247,8 @@ function tally(stats: Stats, events: { eventName: string; args: unknown }[]) {
     } else if (e.eventName === "ExpensePaid") {
       stats.expenses = (BigInt(stats.expenses) + (a.amount ?? 0n)).toString();
       bucket.out = (BigInt(bucket.out) + (a.amount ?? 0n)).toString();
-    } else if (e.eventName === "Distributed") {
-      stats.paidOut = (BigInt(stats.paidOut) + (a.total ?? 0n)).toString();
+    } else if (e.eventName === "Paid" || e.eventName === "PayoutDeferred") {
+      stats.paidOut = (BigInt(stats.paidOut) + (a.amount ?? 0n)).toString();
     }
   }
   const keep = Object.keys(stats.days).sort().slice(-60);

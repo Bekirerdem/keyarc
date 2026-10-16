@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { firstBlockWith, isKeyarcClone, spans, WINDOW } from "./logindex";
+import { firstBlockWith, isCurrentClone, isKeyarcClone, spans, WINDOW } from "./logindex";
+import deployment from "../../deployments/arc-mainnet.json";
 
 describe("log index", () => {
   test("the creation block is found exactly, in a handful of batched rounds", async () => {
@@ -25,5 +26,10 @@ describe("log index", () => {
     expect(isKeyarcClone(clone("95AAA5594942912D4D5011D64F876069F2D37CC9"))).toBe(true);
     expect(isKeyarcClone(clone("1111111111111111111111111111111111111111"))).toBe(false);
     expect(isKeyarcClone("0x")).toBe(false);
+  });
+  test("the agent runs only chests on the current version", () => {
+    const clone = (impl: string) => `0x363d3d373d3d3d363d73${impl.slice(2).toLowerCase()}5af43d82803e903d91602b57fd5bf3`;
+    expect(isCurrentClone(clone(deployment.implementation))).toBe(true);
+    expect(isCurrentClone(clone(deployment.v2.implementation))).toBe(false);
   });
 });

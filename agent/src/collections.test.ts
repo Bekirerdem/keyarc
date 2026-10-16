@@ -29,3 +29,13 @@ describe("applyInvoiceEvents", () => {
     expect(applyInvoiceEvents(once, events)).toEqual(once);
   });
 });
+
+describe("open invoice index (v4 events)", () => {
+  const A = "0x00000000000000000000000000000000000000000000000000000000000000aa" as const;
+  const who = "0x39AEfbC8388da12907A21d9De888B288a9fa5794" as const;
+  test("keeps the due date and what the invoice was for", () => {
+    const index = applyInvoiceEvents([], [{ eventName: "InvoiceCreated", blockNumber: 7n, args: { id: A, amount: u("2400"), payer: who, creator: who, dueAt: 1_800_000_000n, note: "Store upkeep + SEO · October" } }]);
+    expect(index[0].dueAt).toBe("1800000000");
+    expect(index[0].note).toBe("Store upkeep + SEO · October");
+  });
+});

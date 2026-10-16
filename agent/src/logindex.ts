@@ -1,6 +1,7 @@
 import { parseEventLogs, type Address, type Hex } from "viem";
 import { collectiveAbi } from "./chain";
 import type { Env } from "./env";
+import deployment from "../../deployments/arc-mainnet.json";
 
 // A chest's whole event history, indexed once and kept in KV, so the app reads it in one request.
 // Keyless archive eth_getLogs on Arc is thin: publicnode answers only recent blocks, Arc's own RPC caps a range
@@ -17,12 +18,11 @@ const IN_FLIGHT = 6;
 /** ~6h of blocks: an empty tail is rescanned rather than rewritten, so KV sees a write only when it pays. */
 const STALE = 40_000n;
 
-/** EIP-1167 clones of the Keyarc implementations (v3, v2, v1). Anything else is refused: the index is not a free scanner. */
-const IMPLEMENTATIONS = [
-  "95aaa5594942912d4d5011d64f876069f2d37cc9",
-  "f14a2b78518e2bc92e085b4249b67a00aabcab24",
-  "8af27fa90b013d2ec01404c7bccb882d27514061",
-];
+const bare = (a: string) => a.toLowerCase().replace(/^0x/, "");
+/** The implementation new chests are cloned from; the agent operates only these. */
+const CURRENT = bare(deployment.implementation);
+/** EIP-1167 clones of every Keyarc implementation. Anything else is refused: the index is not a free scanner. */
+const IMPLEMENTATIONS = [CURRENT, ...[deployment.v3, deployment.v2, deployment.v1].map((v) => bare(v.implementation))];
 
 export type StoredLog = { blockNumber: string; transactionHash: Hex; logIndex: number; data: Hex; topics: Hex[] };
 export type Index = { from: string; to: string; logs: StoredLog[] };
@@ -54,10 +54,13 @@ export function decodeStored(chest: Address, logs: StoredLog[]) {
   return parseEventLogs({ abi: collectiveAbi, logs: raw as never, strict: false });
 }
 
-export const isKeyarcClone = (code: string) => {
+const cloneOf = (code: string) => {
   const c = code.toLowerCase();
-  return c.startsWith("0x363d3d373d3d3d363d73") && IMPLEMENTATIONS.some((i) => c.slice(22, 62) === i);
+  return c.startsWith("0x363d3d373d3d3d363d73") ? c.slice(22, 62) : null;
 };
+export const isKeyarcClone = (code: string) => IMPLEMENTATIONS.includes(cloneOf(code) ?? "");
+/** A chest on the current version: the only kind the agent runs (older ones keep their history in the index). */
+export const isCurrentClone = (code: string) => cloneOf(code) === CURRENT;
 
 /** One JSON-RPC batch; any error in it fails the whole batch, so a window is either complete or not used. */
 async function post<T>(url: string, calls: Call[], budget: Budget): Promise<T[]> {

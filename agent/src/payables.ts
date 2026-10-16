@@ -29,7 +29,8 @@ export function assessInvoice(args: {
   seenNumbers: string[];
   isPayee: boolean;
   capLeft: bigint;
-  pool: bigint;
+  /** The shared-costs reserve: bills are paid from it, never from anyone's share. */
+  reserve: bigint;
 }): Assessment {
   const { reading, vendor } = args;
   let amount = 0n;
@@ -50,14 +51,14 @@ export function assessInvoice(args: {
     { name: "payment details unchanged", ok: !reading.asksToChangePaymentDetails && (!docAddress || (!!vendor && isAddress(docAddress) && docAddress.toLowerCase() === vendor.payTo.toLowerCase())), detail: reading.asksToChangePaymentDetails ? "asks to pay a new wallet" : docAddress ? `document names ${docAddress}` : "no wallet named" },
     { name: "no pressure or hidden instructions", ok: !reading.pressure && !reading.embeddedInstructions, detail: [reading.pressure && "urgency pressure", reading.embeddedInstructions && "instructions aimed at an AI"].filter(Boolean).join(", ") || "clean" },
     { name: "payee allowed on chain", ok: args.isPayee, detail: vendor ? (args.isPayee ? "allowlisted by vote" : "not allowlisted yet") : "—" },
-    { name: "within agent limit", ok: amount <= args.capLeft, detail: `${usdc(args.capLeft)} USDC left this period` },
-    { name: "money in the pot", ok: amount <= args.pool, detail: `${usdc(args.pool)} USDC available` },
+    { name: "within agent limit", ok: amount <= args.capLeft, detail: `${usdc(args.capLeft)} USDC left this month` },
+    { name: "covered by shared costs", ok: amount <= args.reserve, detail: `${usdc(args.reserve)} USDC set aside for shared costs` },
   ];
 
   const byName = Object.fromEntries(checks.map((c) => [c.name, c.ok]));
   const fraud = !byName["payment details unchanged"] || !byName["no pressure or hidden instructions"] || !byName["not a duplicate"];
   if (fraud) return { checks, outcome: "rejected", amount, payTo: null };
-  const sound = byName["known supplier"] && byName["currency"] && byName["amount in usual range"] && byName["payee allowed on chain"] && byName["money in the pot"];
+  const sound = byName["known supplier"] && byName["currency"] && byName["amount in usual range"] && byName["payee allowed on chain"] && byName["covered by shared costs"];
   if (!sound) return { checks, outcome: "held", amount, payTo: vendor?.payTo ?? null };
   if (!byName["within agent limit"]) return { checks, outcome: "vote", amount, payTo: vendor!.payTo };
   return { checks, outcome: "paid", amount, payTo: vendor!.payTo };
@@ -109,8 +110,8 @@ export async function handleInvoiceEmail(env: Env, message: ForwardableEmailMess
   const seenNumbers = JSON.parse((await env.AGENT_KV.get(numbersKey(chest))) ?? "[]") as string[];
   const a = assessInvoice({
     reading, senderDomain, vendor, seenNumbers, isPayee,
-    capLeft: state.rules.expenseCapPerPeriod - state.expensesThisPeriod,
-    pool: state.pool,
+    capLeft: state.expenseLeft,
+    reserve: state.reserve,
   });
 
   const facts = { from: sender, subject: parsed.subject ?? "", invoice: reading.invoiceNumber, amount: `${usdc(a.amount)} USDC`, billed: reading.summary };

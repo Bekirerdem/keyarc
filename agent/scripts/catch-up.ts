@@ -1,5 +1,5 @@
 /**
- * Catch up a chest the agent hasn't scanned for a while (the cron is paused until real teams use it).
+ * Catch up a chest the agent hasn't scanned for a while (for example after the Worker was down).
  * A Worker pass may read only a few chunks, so the open-invoice index is rebuilt here from the chest's whole history
  * and the scan cursor is moved to the head. Inflows in the skipped range are not judged; pay-link payments are
  * on chain already, and anything else is visible to members on the chest page.

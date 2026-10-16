@@ -11,5 +11,5 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": false
   },
-  "include": ["src", "../web/src/lib/abi.ts"]
+  "include": ["src", "../web/src/lib/abi.ts", "../deployments/arc-mainnet.json"]
 }

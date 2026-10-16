@@ -11,7 +11,7 @@ const reading = (over: Partial<InvoiceReading> = {}): InvoiceReading => ({
   summary: "Figma Professional, October", ...over,
 });
 
-const base = { senderDomain: "figma.com", vendor: figma, seenNumbers: [] as string[], isPayee: true, capLeft: parseUnits("100", 6), pool: parseUnits("500", 6) };
+const base = { senderDomain: "figma.com", vendor: figma, seenNumbers: [] as string[], isPayee: true, capLeft: parseUnits("100", 6), reserve: parseUnits("500", 6) };
 
 describe("assessInvoice", () => {
   test("a usual invoice from a known, allowlisted supplier is paid to the registered address", () => {
@@ -73,5 +73,13 @@ describe("assessInvoice", () => {
   test("an unreadable amount never pays", () => {
     const a = assessInvoice({ ...base, reading: reading({ amount: "fifteen" }) });
     expect(a.outcome).not.toBe("paid");
+  });
+});
+
+describe("shared costs", () => {
+  test("a team that keeps no shared-costs share gets the bill held, never paid from anyone's share", () => {
+    const a = assessInvoice({ ...base, reserve: 0n, reading: reading() });
+    expect(a.outcome).toBe("held");
+    expect(a.checks.find((c) => c.name === "covered by shared costs")!.ok).toBe(false);
   });
 });

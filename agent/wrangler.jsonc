@@ -6,7 +6,7 @@
   "triggers": { "crons": ["* * * * *"] }, // one managed chest per minute, in turn (see scheduled in src/index.ts)
   "kv_namespaces": [{ "binding": "AGENT_KV", "id": "0106e2622ddd4bd4b0be4b972d97e6f0" }],
   "vars": {
-    "CHESTS": "0xd612E26C268375d7ec80FeC3c35623Db9E58aa2c",
+    "CHESTS": "", // extra chests to run; the demo chest comes from deployments/arc-mainnet.json
     "APP_URL": "https://keyarc.app",
     "ALLOWED_ORIGINS": "https://keyarc.pages.dev,https://keyarc.app,https://www.keyarc.app,http://localhost:5180"
   },

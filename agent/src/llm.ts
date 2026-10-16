@@ -40,7 +40,7 @@ export type MatchJudgement = z.infer<typeof MatchJudgement>;
 export const TreasuryNote = z.object({
   headline: z.string().describe("One short sentence"),
   body: z.string().describe("Three to five sentences, plain language, numbers from the facts only"),
-  suggestion: z.enum(["none", "raise_reserve", "lower_reserve", "release_reserve"]),
+  suggestion: z.enum(["none", "raise_reserve", "lower_reserve", "release_reserve"]).describe("raise/lower = change the shared-costs share; release = return part of the reserve to members"),
   suggestedReservePercent: z.number().describe("Only meaningful for raise/lower; else 0"),
   reasoning: z.string(),
 });
@@ -58,7 +58,7 @@ export type MatchInput = {
   candidates: { id: string; amountUsdc: string; createdAt: string; payer: string; note: string }[];
 };
 export type TreasuryInput = { facts: Record<string, string> };
-export type ReminderInput = { lang: "en" | "tr"; team: string; job: string; amountUsdc: string; daysOpen: number };
+export type ReminderInput = { lang: "en" | "tr"; team: string; job: string; amountUsdc: string; daysOpen: number; dueDate?: string; daysLate?: number };
 
 // ── Anthropic implementation ────────────────────────────
 
@@ -114,8 +114,10 @@ export class ClaudeJudge implements Judge {
   treasuryNote(input: TreasuryInput) {
     return this.ask(TreasuryNote, [{
       type: "text",
-      text: "Write this week's treasury note for the team: how many months of costs the treasury covers, whether the reserve is " +
-        "enough, and at most one suggestion. Members will vote on any suggestion; you cannot change rules yourself.\n" +
+      text: "Write this week's note for the team: what came in, what was paid out to members, and whether the share they set " +
+        "aside for shared costs (tools, hosting, subcontractors) covers the bills the chest pays. Members are paid the moment a " +
+        "client pays, so the chest only holds that shared-costs reserve. Make at most one suggestion about the shared-costs " +
+        "share. Members will vote on any suggestion; you cannot change rules yourself.\n" +
         `<facts>\n${JSON.stringify(input.facts, null, 2)}\n</facts>`,
     }]);
   }
@@ -125,7 +127,8 @@ export class ClaudeJudge implements Judge {
       type: "text",
       text: `Write a short, friendly payment reminder from the team to their client, in ${input.lang === "tr" ? "Turkish" : "English"}. ` +
         "Say what the invoice is for and the amount, and that it can be paid in USDC from the link below the message. " +
-        "Do not add the link, a due date, late fees or any number that is not in the facts. Keep the tone of a long-term partner.\n" +
+        "If the facts give a due date you may say it was due then; never invent one. " +
+        "Do not add the link, late fees or any number that is not in the facts. Keep the tone of a long-term partner.\n" +
         `<facts>\n${JSON.stringify(input, null, 2)}\n</facts>`,
     }], "low");
   }
@@ -134,9 +137,11 @@ export class ClaudeJudge implements Judge {
 /** The rules-only reminder: same facts, fixed wording. */
 export function templateReminder(r: ReminderInput): Reminder {
   const job = r.job || (r.lang === "tr" ? "son işimiz" : "our latest work");
+  const dueTr = r.dueDate ? ` (son ödeme tarihi ${r.dueDate})` : "";
+  const dueEn = r.dueDate ? ` (due ${r.dueDate})` : "";
   return r.lang === "tr"
-    ? { subject: `Hatırlatma: ${job} · ${r.amountUsdc} USDC`, message: `Merhaba,\n\n${job} için ${r.amountUsdc} USDC tutarındaki faturamız hâlâ açık görünüyor. Aşağıdaki linkten Arc ya da Base üzerinden USDC ile ödeyebilirsiniz.\n\nTeşekkürler,\n${r.team}` }
-    : { subject: `Reminder: ${job} · ${r.amountUsdc} USDC`, message: `Hi,\n\nOur invoice for ${job}, ${r.amountUsdc} USDC, still shows as open. You can pay it in USDC from Arc or Base using the link below.\n\nThanks,\n${r.team}` };
+    ? { subject: `Hatırlatma: ${job} · ${r.amountUsdc} USDC`, message: `Merhaba,\n\n${job} için ${r.amountUsdc} USDC tutarındaki faturamız${dueTr} hâlâ açık görünüyor. Aşağıdaki linkten Arc ya da Base üzerinden USDC ile ödeyebilirsiniz.\n\nTeşekkürler,\n${r.team}` }
+    : { subject: `Reminder: ${job} · ${r.amountUsdc} USDC`, message: `Hi,\n\nOur invoice for ${job}, ${r.amountUsdc} USDC${dueEn}, still shows as open. You can pay it in USDC from Arc or Base using the link below.\n\nThanks,\n${r.team}` };
 }
 
 /** Used when no API key is configured: no judgement, so everything that needs one is held for a vote. */

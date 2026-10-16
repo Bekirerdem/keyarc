@@ -37,13 +37,12 @@ export type ChestState = {
   name: string;
   agent: Address;
   members: readonly Address[];
+  /** Set aside for shared costs; the agent pays allowlisted bills from it. */
   reserve: bigint;
-  pool: bigint;
   unattributed: bigint;
-  period: bigint;
-  periodStart: number;
-  attributedThisPeriod: bigint;
-  expensesThisPeriod: bigint;
+  /** What the agent may still attribute or spend in the current window without a vote. */
+  attributeLeft: bigint;
+  expenseLeft: bigint;
   rules: {
     reserveBps: number;
     reserveTarget: bigint;
@@ -57,7 +56,7 @@ export type ChestState = {
 
 export async function readChest(address: Address): Promise<ChestState> {
   const c = { address, abi: collectiveAbi } as const;
-  const [name, agent, members, reserve, pool, unattributed, period, periodStart, attributed, expenses, rules] =
+  const [name, agent, members, reserve, unattributed, room, rules] =
     await publicClient.multicall({
       allowFailure: false,
       contracts: [
@@ -65,20 +64,15 @@ export async function readChest(address: Address): Promise<ChestState> {
         { ...c, functionName: "agent" },
         { ...c, functionName: "members" },
         { ...c, functionName: "reserve" },
-        { ...c, functionName: "pool" },
         { ...c, functionName: "unattributed" },
-        { ...c, functionName: "period" },
-        { ...c, functionName: "periodStart" },
-        { ...c, functionName: "attributedThisPeriod" },
-        { ...c, functionName: "expensesThisPeriod" },
+        { ...c, functionName: "agentRoom" },
         { ...c, functionName: "rules" },
       ],
     });
   return {
-    address, name, agent, members, reserve, pool, unattributed, period,
-    periodStart: Number(periodStart),
-    attributedThisPeriod: attributed,
-    expensesThisPeriod: expenses,
+    address, name, agent, members, reserve, unattributed,
+    attributeLeft: room[0],
+    expenseLeft: room[1],
     rules: { ...rules },
   };
 }
