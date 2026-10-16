@@ -131,6 +131,8 @@ Every decision is stored with its facts, each check and its result, the model's 
 | Treasury agent | [`0xBB682c02E3429d808499c1Ec5414b34113A21017`](https://explorer.arc.io/address/0xBB682c02E3429d808499c1Ec5414b34113A21017) |
 | USDC → EURC router (Uniswap) | [`0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77`](https://explorer.arc.io/address/0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77) |
 
+Both contracts are **verified (exact match)** on [Sourcify](https://sourcify.dev/server/v2/contract/5042/0x46561f701bc73c914BcdD1Fb58E307DcC5258278) and on the Arc explorer. Every team chest is an EIP-1167 clone, which the explorer reads and writes through the verified implementation.
+
 **End-to-end proof on mainnet** (proof chest [`0x09987bc4Ac66992935bDb8B9ff2A7A7F0980F318`](https://explorer.arc.io/address/0x09987bc4Ac66992935bDb8B9ff2A7A7F0980F318), reproducible with [`agent/scripts/mainnet-setup.ts`](agent/scripts/mainnet-setup.ts)):
 
 1. A 0.10 USDC invoice is written for two people, 70 / 30 ([tx](https://explorer.arc.io/tx/0xdeae1a5d2a7ac0b5165b4a71742a8389fa8c418c5a0379edf85bdf89b156dc8e)).
