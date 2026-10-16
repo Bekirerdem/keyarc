@@ -1,5 +1,5 @@
 import { formatUnits, parseAbiItem, type Address, type Hex } from "viem";
-import { USDC, agentWallet, collectiveAbi, publicClient, readChest } from "./chain";
+import { USDC, agentWallet, collectiveAbi, publicClient, readChest, readInvoice } from "./chain";
 import type { Env } from "./env";
 import type { Judge } from "./llm";
 import { saveDecision, seal, type Check } from "./log";
@@ -146,7 +146,7 @@ const NOTE_WRITES = 3;
  * free-plan KV allows 1,000 writes a day and an open endpoint must not be able to spend them.
  */
 export async function setInvoiceNote(env: Env, chest: Address, id: Hex, note: string): Promise<"ok" | "unchanged" | "closed" | "limit"> {
-  const [, , , status] = await publicClient.readContract({ address: chest, abi: collectiveAbi, functionName: "invoice", args: [id] });
+  const { status } = await readInvoice(chest, id);
   if (status !== 1) return "closed";
   const text = note.slice(0, 280);
   const saved = await env.AGENT_KV.getWithMetadata<{ n?: number }>(noteKey(chest, id));
@@ -185,8 +185,8 @@ export async function runCollections(env: Env, chest: Address, judge: Judge) {
     // The client can pay from Base before everyone on the invoice agreed to the shares. The chest won't settle it
     // until they have, so wait without asking the model; it is looked at again on the next pass.
     if (exact.length === 1) {
-      const [, , , , , pendingApprovals] = await publicClient.readContract({ address: chest, abi: collectiveAbi, functionName: "invoice", args: [exact[0].id] });
-      if (pendingApprovals > 0) {
+      const { pending } = await readInvoice(chest, exact[0].id);
+      if (pending > 0) {
         stillPending.push({ ...inflow, seen: undefined });
         continue;
       }

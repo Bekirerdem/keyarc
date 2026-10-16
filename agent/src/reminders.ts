@@ -1,5 +1,5 @@
 import { formatUnits, isAddressEqual, parseEventLogs, type Address, type Hex } from "viem";
-import { collectiveAbi, publicClient, readChest } from "./chain";
+import { collectiveAbi, publicClient, readChest, readInvoice } from "./chain";
 import { getInvoiceNote, openInvoices, type OpenInvoice } from "./collections";
 import type { Env } from "./env";
 import type { Judge, Reminder, ReminderInput } from "./llm";
@@ -46,7 +46,7 @@ const isoDay = (s: number) => new Date(s * 1000).toISOString().slice(0, 10);
  * read from the chain; the model only words them. The team sends it themselves, through the channel they already use.
  */
 export async function draftReminder(env: Env, chest: Address, id: Hex, createdTx: Hex, lang: "en" | "tr", judge: Judge): Promise<Draft> {
-  const [amount, , , status, dueAt] = await publicClient.readContract({ address: chest, abi: collectiveAbi, functionName: "invoice", args: [id] });
+  const { amount, status, dueAt } = await readInvoice(chest, id);
   if (status !== 1) throw new Error("invoice is not open");
 
   const cached = await env.AGENT_KV.get<Draft & { lang: string }>(reminderKey(chest, id), "json");
@@ -79,16 +79,20 @@ export async function draftReminder(env: Env, chest: Address, id: Hex, createdTx
 export async function runReminders(env: Env, chest: Address, judge: Judge) {
   const nowS = Math.floor(Date.now() / 1000);
   const lastSent = JSON.parse((await env.AGENT_KV.get(autoKey(chest))) ?? "{}") as Record<string, number>;
-  const [next] = overdue(await openInvoices(env, chest), nowS, lastSent);
-  if (!next) return;
-
-  const [amount, , , status, dueAt, pending] = await publicClient.readContract({ address: chest, abi: collectiveAbi, functionName: "invoice", args: [next.id] });
-  // paid, cancelled, or the team hasn't agreed to the shares yet (the client couldn't pay anyway): nothing to chase
-  if (status !== 1 || pending > 0) {
-    lastSent[next.id.toLowerCase()] = nowS;
-    await env.AGENT_KV.put(autoKey(chest), JSON.stringify(lastSent));
-    return;
+  // a few candidates per pass: one still waiting for the team's agreement must not hold up the rest
+  let next: OpenInvoice | undefined;
+  let amount = 0n;
+  let dueAt = 0n;
+  for (const inv of overdue(await openInvoices(env, chest), nowS, lastSent).slice(0, 3)) {
+    const { amount: a, status, dueAt: d, pending } = await readInvoice(chest, inv.id);
+    // the team hasn't agreed to the shares yet, so the client couldn't pay anyway: look again next pass, once they have
+    if (status === 1 && pending > 0) continue;
+    // paid or cancelled since the index last saw it: nothing to chase
+    if (status !== 1) continue;
+    [next, amount, dueAt] = [inv, a, d];
+    break;
   }
+  if (!next) return;
   const [{ name }, block] = await Promise.all([readChest(chest), publicClient.getBlock({ blockNumber: next.block })]);
   const lang = await teamLang(env, chest, next.note);
   const input: ReminderInput = {
@@ -121,7 +125,7 @@ async function compose(env: Env, chest: Address, id: Hex, input: ReminderInput, 
     at: draft.at,
     kind: "reminder",
     title: trigger === "overdue"
-      ? `Invoice ${input.daysLate} day(s) past due: drafted a reminder for ${input.amountUsdc} USDC`
+      ? `Invoice ${input.daysLate ? `${input.daysLate} day(s) past due` : "past its due date"}: drafted a reminder for ${input.amountUsdc} USDC`
       : `Drafted a payment reminder for ${input.amountUsdc} USDC`,
     facts: {
       invoice: id,

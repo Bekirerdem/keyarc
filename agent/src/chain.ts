@@ -78,3 +78,24 @@ export async function readChest(address: Address): Promise<ChestState> {
 }
 
 export const isHex32 = (v: unknown): v is Hex => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v);
+
+export type OnChainInvoice = {
+  amount: bigint;
+  creator: Address;
+  payer: Address;
+  /** 0 none · 1 open · 2 paid · 3 cancelled */
+  status: number;
+  dueAt: bigint;
+  reserveBps: number;
+  /** contributors who haven't agreed to their share yet */
+  pending: number;
+  contributors: readonly Address[];
+  sharesBps: readonly number[];
+};
+
+/** The invoice view by name: its fields are mostly numbers, so positional reads are easy to get wrong silently. */
+export async function readInvoice(chest: Address, id: Hex): Promise<OnChainInvoice> {
+  const [amount, creator, payer, status, dueAt, reserveBps, pending, contributors, sharesBps] =
+    await publicClient.readContract({ address: chest, abi: collectiveAbi, functionName: "invoice", args: [id] });
+  return { amount, creator, payer, status, dueAt, reserveBps, pending, contributors, sharesBps };
+}
