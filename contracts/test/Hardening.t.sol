@@ -125,10 +125,8 @@ contract HardeningTest is CollectiveBase {
         c.attribute(mehmet, 60 * USDC, keccak256("inflow-6")); // 120 > 100 cap this period
         vm.stopPrank();
         vm.warp(block.timestamp + 30 days);
-        vm.prank(ali);
-        c.distribute();
         vm.prank(agent);
-        c.attribute(mehmet, 60 * USDC, keccak256("inflow-7")); // new period, cap reset
+        c.attribute(mehmet, 60 * USDC, keccak256("inflow-7")); // new window, cap reset
     }
 
     // ── I4: invoice ids are bound to their creator; payment is bound to the amount ──
@@ -153,16 +151,13 @@ contract HardeningTest is CollectiveBase {
         uint16[] memory sh = new uint16[](1);
         who[0] = creator; sh[0] = 10_000;
         vm.prank(creator);
-        id = c.createInvoice(salt, amount, address(0), who, sh);
+        id = c.createInvoice(salt, amount, address(0), 0, who, sh, "");
     }
 
-    // ── I5: released reserve goes to named recipients, cannot be captured by buying credit ──
+    // ── I5: released reserve goes only to the recipients named in the vote ──
 
-    function test_I5_releasedReserveCannotBeCapturedBySelfInvoice() public {
+    function test_I5_releasedReserveGoesToNamedRecipients() public {
         _pay(_invoice(keccak256("a"), 5000 * USDC, ali, 5000, ayse, 5000)); // reserve fills to 500
-        vm.warp(block.timestamp + 30 days);
-        vm.prank(ali);
-        c.distribute();
 
         address[] memory to = new address[](3);
         uint256[] memory amt = new uint256[](3);
@@ -177,8 +172,8 @@ contract HardeningTest is CollectiveBase {
         c.execute(id);
 
         assertEq(c.reserve(), 0);
-        assertEq(c.pool(), 0); // nothing parked in the pool for a credit buyer to capture
         assertEq(usdc.balanceOf(mehmet), 100 * USDC);
+        assertEq(usdc.balanceOf(ayse), 2450 * USDC); // 2250 from the invoice + 200 released
         assertEq(usdc.balanceOf(address(c)), _accounted());
     }
 

@@ -102,13 +102,11 @@ contract GovernanceTest is CollectiveBase {
         assertEq(c.members().length, 3);
     }
 
-    function test_removedMemberStillPaidForEarnedCredit() public {
-        _pay(_invoice(keccak256("job"), 1000 * USDC, mehmet, 5000, ali, 5000));
+    function test_removedMemberStillPaidForWorkTheyAgreedTo() public {
+        bytes32 id = _invoice(keccak256("job"), 1000 * USDC, mehmet, 5000, ali, 5000);
         _pass(Collective.Kind.RemoveMember, abi.encode(mehmet));
-        vm.warp(block.timestamp + 30 days);
-        vm.prank(ali);
-        c.distribute();
-        assertEq(usdc.balanceOf(mehmet), 450 * USDC); // 900 pool * 500/1000
+        _pay(id);
+        assertEq(usdc.balanceOf(mehmet), 450 * USDC); // half of 900
     }
 
     function test_releaseReserveOnlyByVote() public {
@@ -118,8 +116,7 @@ contract GovernanceTest is CollectiveBase {
         to[0] = ayse; amt[0] = 100 * USDC;
         _pass(Collective.Kind.ReleaseReserve, abi.encode(to, amt));
         assertEq(c.reserve(), 0);
-        assertEq(c.pool(), 900 * USDC);
-        assertEq(usdc.balanceOf(ayse), 100 * USDC);
+        assertEq(usdc.balanceOf(ayse), 550 * USDC); // 450 share + 100 released
     }
 
     function test_strangerCannotPropose() public {

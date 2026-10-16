@@ -7,26 +7,31 @@ import {Collective} from "../src/Collective.sol";
 /// Members choose where their share lands (their own wallet, another wallet, an exchange deposit address).
 contract PayoutAddressTest is CollectiveBase {
     address exchange = makeAddr("exchange-deposit");
+    bytes32 id;
 
     function setUp() public override {
         super.setUp();
-        _pay(_invoice(keccak256("a"), 2000 * USDC, ali, 6000, ayse, 4000)); // pool 1800: ali 1080, ayse 720
-    }
-
-    function _distribute() internal {
-        vm.warp(block.timestamp + 30 days);
-        vm.prank(ali);
-        c.distribute();
+        id = _invoice(keccak256("a"), 2000 * USDC, ali, 6000, ayse, 4000); // net 1800: ali 1080, ayse 720
     }
 
     function test_shareGoesToChosenAddress() public {
         vm.prank(ayse);
         c.setPayoutAddress(exchange);
         assertEq(c.payoutTo(ayse), exchange);
-        _distribute();
+        _pay(id);
         assertEq(usdc.balanceOf(exchange), 720 * USDC);
         assertEq(usdc.balanceOf(ayse), 0);
         assertEq(usdc.balanceOf(ali), 1080 * USDC);
+    }
+
+    function test_paidEventNamesTheDestination() public {
+        vm.prank(ayse);
+        c.setPayoutAddress(exchange);
+        vm.expectEmit(true, true, false, true, address(c));
+        emit Collective.Paid(id, ali, ali, 1080 * USDC);
+        vm.expectEmit(true, true, false, true, address(c));
+        emit Collective.Paid(id, ayse, exchange, 720 * USDC);
+        _pay(id);
     }
 
     function test_resetGoesBackToOwnWallet() public {
@@ -34,7 +39,7 @@ contract PayoutAddressTest is CollectiveBase {
         c.setPayoutAddress(exchange);
         c.setPayoutAddress(address(0));
         vm.stopPrank();
-        _distribute();
+        _pay(id);
         assertEq(usdc.balanceOf(ayse), 720 * USDC);
         assertEq(usdc.balanceOf(exchange), 0);
     }
@@ -56,7 +61,7 @@ contract PayoutAddressTest is CollectiveBase {
         vm.prank(ayse);
         c.setPayoutAddress(exchange);
         usdc.setBlocked(exchange, true);
-        _distribute();
+        _pay(id);
         // the member, not the destination, can claim it to a working address
         assertEq(c.owed(ayse), 720 * USDC);
         assertEq(c.owed(exchange), 0);

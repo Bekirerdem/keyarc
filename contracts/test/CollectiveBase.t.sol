@@ -11,16 +11,19 @@ import {BlocklistUSDC} from "./mocks/BlocklistUSDC.sol";
 abstract contract CollectiveBase is Test {
     BlocklistUSDC usdc;
     Collective c;
-    address ali = makeAddr("ali");
-    address ayse = makeAddr("ayse");
-    address mehmet = makeAddr("mehmet");
+    address ali;
+    uint256 aliKey;
+    address ayse;
+    uint256 ayseKey;
+    address mehmet;
+    uint256 mehmetKey;
     address agent = makeAddr("agent");
     address client = makeAddr("client");
     uint256 constant USDC = 1e6;
 
     function defaultRules() internal pure returns (Rules memory) {
         return Rules({
-            reserveBps: 1000,           // 10%
+            reserveBps: 1000,           // 10% to shared costs
             reserveTarget: 500 * USDC,
             autoAttributeCap: 100 * USDC,
             expenseCapPerPeriod: 200 * USDC,
@@ -31,6 +34,9 @@ abstract contract CollectiveBase is Test {
     }
 
     function setUp() public virtual {
+        (ali, aliKey) = makeAddrAndKey("ali");
+        (ayse, ayseKey) = makeAddrAndKey("ayse");
+        (mehmet, mehmetKey) = makeAddrAndKey("mehmet");
         usdc = new BlocklistUSDC();
         c = Collective(Clones.clone(address(new Collective())));
         address[] memory m = new address[](3);
@@ -41,26 +47,49 @@ abstract contract CollectiveBase is Test {
         usdc.approve(address(c), type(uint256).max);
     }
 
-    /// @dev ali creates an invoice from a salt; returns the contract-derived id.
-    function _invoice(bytes32 salt, uint256 amount, address a, uint16 sa, address b, uint16 sb)
-        internal
-        returns (bytes32 id)
-    {
+    /// @dev ali writes a two-person invoice; nobody else has agreed yet.
+    function _draft(bytes32 salt, uint256 amount, address a, uint16 sa, address b, uint16 sb) internal returns (bytes32 id) {
         address[] memory who = new address[](2);
         uint16[] memory sh = new uint16[](2);
         who[0] = a; who[1] = b; sh[0] = sa; sh[1] = sb;
         vm.prank(ali);
-        id = c.createInvoice(salt, amount, address(0), who, sh);
+        id = c.createInvoice(salt, amount, address(0), 0, who, sh, "");
+    }
+
+    /// @dev ali writes a two-person invoice and everyone on it agrees, so it can be paid.
+    function _invoice(bytes32 salt, uint256 amount, address a, uint16 sa, address b, uint16 sb) internal returns (bytes32 id) {
+        id = _draft(salt, amount, a, sa, b, sb);
+        _agreeAll(id);
+    }
+
+    /// @dev ali writes a one-person invoice.
+    function _solo(bytes32 salt, uint256 amount, address who_) internal returns (bytes32 id) {
+        address[] memory who = new address[](1);
+        uint16[] memory sh = new uint16[](1);
+        who[0] = who_; sh[0] = 10_000;
+        vm.prank(ali);
+        id = c.createInvoice(salt, amount, address(0), 0, who, sh, "");
+        _agreeAll(id);
+    }
+
+    function _agreeAll(bytes32 id) internal {
+        (,,,,,,, address[] memory who,) = c.invoice(id);
+        for (uint256 i; i < who.length; ++i) {
+            if (!c.approved(id, who[i])) {
+                vm.prank(who[i]);
+                c.approveInvoice(id);
+            }
+        }
     }
 
     /// @dev client pays an invoice at its stated amount.
     function _pay(bytes32 id) internal {
-        (uint256 amount,,,,,) = c.invoice(id);
+        (uint256 amount,,,,,,,,) = c.invoice(id);
         vm.prank(client);
         c.payInvoice(id, amount);
     }
 
     function _accounted() internal view returns (uint256) {
-        return c.reserve() + c.pool() + c.totalOwed() + c.unattributed();
+        return c.reserve() + c.totalOwed() + c.unattributed();
     }
 }

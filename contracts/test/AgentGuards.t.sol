@@ -9,8 +9,8 @@ import {Collective} from "../src/Collective.sol";
 contract AgentGuardsTest is CollectiveBase {
     address attacker = makeAddr("attacker");
 
-    function _fundPool() internal {
-        _pay(_invoice(keccak256("job"), 1000 * USDC, ali, 5000, ayse, 5000)); // pool 900
+    function _fundReserve() internal {
+        _pay(_invoice(keccak256("job"), 5000 * USDC, ali, 5000, ayse, 5000)); // reserve 500
     }
 
     function _passAs(address proposer, Collective.Kind kind, bytes memory payload, bytes32 ref) internal returns (uint256 id) {
@@ -28,7 +28,7 @@ contract AgentGuardsTest is CollectiveBase {
     // ── agent-proposed expenses must still go to an allowlisted payee ──
 
     function test_agentProposedExpenseToUnlistedPayeeReverts() public {
-        _fundPool();
+        _fundReserve();
         uint256 id = _passAs(agent, Collective.Kind.Expense, abi.encode(attacker, 480 * USDC), keccak256("wallet-changed"));
         vm.prank(ali);
         vm.expectRevert(abi.encodeWithSelector(Collective.NotPayee.selector, attacker));
@@ -37,7 +37,7 @@ contract AgentGuardsTest is CollectiveBase {
     }
 
     function test_memberProposedExpenseCanPayAnyoneByVote() public {
-        _fundPool();
+        _fundReserve();
         uint256 id = _passAs(ali, Collective.Kind.Expense, abi.encode(attacker, 10 * USDC), bytes32(0));
         vm.prank(ali);
         c.execute(id);
@@ -58,10 +58,10 @@ contract AgentGuardsTest is CollectiveBase {
         uint16[] memory sh = new uint16[](1);
         who[0] = ali; sh[0] = 10_000;
         vm.prank(agent);
-        bytes32 id = c.createInvoice(keccak256("agent-made"), 10 * USDC, address(0), who, sh);
+        bytes32 id = c.createInvoice(keccak256("agent-made"), 10 * USDC, address(0), 0, who, sh, "");
         vm.prank(agent);
         c.cancelInvoice(id);
-        (,,, Collective.InvoiceStatus status,,) = c.invoice(id);
+        (,,, Collective.InvoiceStatus status,,,,,) = c.invoice(id);
         assertEq(uint8(status), uint8(Collective.InvoiceStatus.Cancelled));
     }
 
