@@ -201,6 +201,7 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
             ))}
             <button className={`btn small ${isNew ? "" : "ghost"}`} onClick={() => setTeam("new")}>{t("b.newTeam")}</button>
           </div>
+          {!isNew && <p className="hint" style={{ marginTop: 10 }}>{t("b.teamHint")}</p>}
           {isNew && (
             <label className="field" style={{ marginTop: 14 }}>
               <span className="hint">{t("b.teamName")}</span>

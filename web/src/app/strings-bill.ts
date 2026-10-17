@@ -18,7 +18,11 @@ export const B = defineStrings({
   // bill
   "b.label": ["new invoice", "yeni fatura"],
   "b.title": ["What did the team deliver?", "Ekip ne teslim etti?"],
-  "b.team": ["team", "ekip"],
+  "b.team": ["which team is billing", "fatura hangi ekip adına"],
+  "b.teamHint": [
+    "Each team has one chest. Any member can bill for it, and all of the team's invoices show on the team page.",
+    "Her ekibin tek bir kasası var. Her üye o ekip adına fatura yazabilir; ekibin bütün faturaları ekip sayfasında görünür.",
+  ],
   "b.newTeam": ["+ New team", "+ Yeni ekip"],
   "b.teamName": ["Team name", "Ekip adı"],
   "b.teamNamePh": ["Northwind Studio", "Kuzey Stüdyo"],
@@ -86,10 +90,10 @@ export const B = defineStrings({
   "d.label": ["invoice ready", "fatura hazır"],
   "d.title": ["Send this link to the client.", "Bu linki müşteriye gönder."],
   "d.body": ["They pay in USDC from Arc or Base. Your share goes out the moment it lands.", "Arc'tan ya da Base'den USDC ile öder. Para gelir gelmez paylar gider."],
-  "d.titleTeam": ["Send this link to your teammates first.", "Bu linki önce ekip arkadaşlarına gönder."],
+  "d.titleTeam": ["One link: the team agrees, the client pays.", "Tek link: ekip onaylar, müşteri öder."],
   "d.bodyTeam": [
-    "{who}: they open it and agree to their share with one free signature. Then send the same link to the client. They pay in USDC from Arc or Base, and the shares go out the moment it lands.",
-    "{who}: linki açıp payını ücretsiz tek imzayla onaylar. Sonra aynı linki müşteriye gönder. Arc'tan ya da Base'den USDC ile öder, para gelir gelmez paylar gider.",
+    "First share it with {who}: they open it and agree to their share with one free signature. Once everyone has, send the same link to the client. They pay in USDC from Arc or Base and the shares go out at once. The link knows who opens it: the team sees the agree step, the client sees the pay step.",
+    "Önce {who} ile paylaş: linki açınca payını ücretsiz tek imzayla onaylar. Herkes onaylayınca aynı linki müşteriye gönder; Arc'tan ya da Base'den USDC ile öder, paylar aynı anda dağılır. Link açanı tanır: ekipten biri onay adımını, müşteri ödeme adımını görür.",
   ],
   "d.copy": ["Copy link", "Linki kopyala"],
   "d.copied": ["Copied", "Kopyalandı"],

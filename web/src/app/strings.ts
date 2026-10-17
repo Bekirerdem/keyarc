@@ -193,6 +193,17 @@ defineStrings({
     "You're on this invoice. Agree to your share with a signature (free), and the client can pay.",
     "Bu faturada sen de varsın. Payını bir imzayla onayla (ücretsiz), müşteri ödeyebilsin.",
   ],
+  "pay.waitTeam": [
+    "Waiting for {n} teammate(s) to agree. Once everyone has, send this link to the client: they pay it, not the team.",
+    "{n} ekip arkadaşının onayı bekleniyor. Herkes onaylayınca bu linki müşteriye gönder: ödemeyi ekip değil, müşteri yapar.",
+  ],
+  "pay.teamLabel": ["your team's invoice", "ekibinin faturası"],
+  "pay.teamReady": [
+    "Everyone agreed. The client pays, not the team: send them this link. Your share lands in your wallet the moment they pay.",
+    "Herkes onayladı. Ödemeyi ekip değil müşteri yapar: bu linki müşteriye gönder. Müşteri öder ödemez payın cüzdanına düşer.",
+  ],
+  "pay.copyForClient": ["Copy the link for the client", "Linki müşteri için kopyala"],
+  "pay.iPay": ["I'm paying it myself", "Ödemeyi ben yapacağım"],
   "pay.label": ["pay", "öde"],
   "pay.step1": ["Allow exactly {amt} USDC", "Tam {amt} USDC'ye izin ver"],
   "pay.step2": ["Pay. The invoice reference is recorded on Arc and everyone is paid", "Öde. Fatura numarası Arc'a yazılır, herkese ödenir"],

@@ -9,6 +9,7 @@ import { MEMO, USDC, versionOf } from "../lib/contracts";
 import { pct, short, usdc } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { collectiveLogs } from "../lib/logs";
+import { useNames } from "../lib/team";
 import { useTx } from "../lib/tx";
 import { AgreeButton } from "./Agree";
 import { useDue } from "./Invoices";
@@ -74,6 +75,13 @@ export default function Pay() {
   const allowed = d && d.allowance >= d.amount;
   const waiting = !!d && d.status === 1 && d.pending > 0;
   const iMustAgree = !!d && !!me && waiting && !d.agreedByMe && d.contributors.some((m) => m.toLowerCase() === me.toLowerCase());
+  // the same link goes to the team and to the client: someone on the team gets "send it to the client", not a pay button
+  const onTeam = !!d && !!me && [d.creator, ...d.contributors].some((m) => m.toLowerCase() === me.toLowerCase());
+  const [payAnyway, setPayAnyway] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const payHere = !onTeam || payAnyway;
+  const who = useNames(chest);
+  const label = (m: Address) => `${who(m)}${me && m.toLowerCase() === me.toLowerCase() ? ` · ${t("b.you")}` : ""}`;
   const refresh = () => qc.invalidateQueries();
   const dueLine = d ? due({ dueAt: d.dueAt, status: d.status }) : null;
 
@@ -126,7 +134,7 @@ export default function Pay() {
               <div className="label">{t("pay.who")}</div>
               <ul className="mono" style={{ listStyle: "none", marginTop: 10, display: "grid", gap: 6 }}>
                 {d!.contributors.map((m, k) => (
-                  <li key={m} className="between"><span>{short(m)}</span><span>{pct(d!.sharesBps[k])}</span></li>
+                  <li key={m} className="between"><span>{label(m)}</span><span>{pct(d!.sharesBps[k])}</span></li>
                 ))}
               </ul>
               <p className="hint" style={{ marginTop: 12 }}>{d!.reserveBps > 0 ? t("pay.explainReserve", { pct: pct(d!.reserveBps) }) : t("pay.explain")}</p>
@@ -135,19 +143,30 @@ export default function Pay() {
             {waiting && (
               <div className="card kraft">
                 <div className="label">{t("pay.waitLabel")}</div>
-                <p className="note" style={{ marginTop: 8 }}>{iMustAgree ? t("pay.youAgree") : t("pay.waitBody")}</p>
+                <p className="note" style={{ marginTop: 8 }}>{iMustAgree ? t("pay.youAgree") : onTeam ? t("pay.waitTeam", { n: d!.pending }) : t("pay.waitBody")}</p>
                 {iMustAgree && <div style={{ marginTop: 12 }}><AgreeButton chest={chest} id={id} onDone={refresh} /></div>}
               </div>
             )}
 
-            {d!.status === 1 && !waiting && !paidTx && (
+            {d!.status === 1 && !waiting && !paidTx && !payHere && (
+              <div className="card kraft noprint">
+                <div className="label">{t("pay.teamLabel")}</div>
+                <p className="note" style={{ marginTop: 8 }}>{t("pay.teamReady")}</p>
+                <div className="row" style={{ marginTop: 14, flexWrap: "wrap" }}>
+                  <button className="btn red" onClick={() => { void navigator.clipboard?.writeText(window.location.href).then(() => setCopied(true)); }}>{copied ? t("d.copied") : t("pay.copyForClient")}</button>
+                  <button className="linkbtn" onClick={() => setPayAnyway(true)}>{t("pay.iPay")}</button>
+                </div>
+              </div>
+            )}
+
+            {d!.status === 1 && !waiting && !paidTx && payHere && (
               <div className="row noprint" role="tablist" aria-label={t("pay.via")}>
                 <button role="tab" aria-selected={via === "arc"} className={`btn small ${via === "arc" ? "" : "ghost"}`} onClick={() => setVia("arc")}>{t("pay.viaArc")}</button>
                 <button role="tab" aria-selected={via === "base"} className={`btn small ${via === "base" ? "" : "ghost"}`} onClick={() => setVia("base")}>{t("pay.viaBase")}</button>
               </div>
             )}
-            {d!.status === 1 && !waiting && !paidTx && via === "base" && <PayFromBase chest={chest} invoiceId={id} amount={d!.amount} />}
-            {d!.status === 1 && !waiting && !paidTx && via === "arc" && (
+            {d!.status === 1 && !waiting && !paidTx && payHere && via === "base" && <PayFromBase chest={chest} invoiceId={id} amount={d!.amount} />}
+            {d!.status === 1 && !waiting && !paidTx && payHere && via === "arc" && (
               <div className="card ink noprint">
                 <div className="label">{t("pay.label")}</div>
                 <ol className="mono" style={{ marginTop: 10, paddingLeft: 18, display: "grid", gap: 6 }}>
@@ -180,7 +199,7 @@ export default function Pay() {
                     <tr><th>{t("pay.r.amount")}</th><td>{usdc(d!.amount)} USDC</td></tr>
                     {paidDate && <tr><th>{t("pay.r.when")}</th><td>{paidDate}</td></tr>}
                     {(s?.toReserve ?? 0n) > 0n && <tr><th>{t("pay.r.reserve")}</th><td>{usdc(s!.toReserve!)} USDC</td></tr>}
-                    {s?.payouts.map((p) => <tr key={p.member}><th>{short(p.member)}</th><td>{usdc(p.amount)} USDC</td></tr>)}
+                    {s?.payouts.map((p) => <tr key={p.member}><th>{label(p.member)}</th><td>{usdc(p.amount)} USDC</td></tr>)}
                     <tr><th>{t("pay.r.ref")}</th><td className="mono">{id}</td></tr>
                     {(paidTx ?? s?.paidTx) && <tr><th>{t("pay.r.tx")}</th><td><a className="mono" href={explorerTx((paidTx ?? s!.paidTx)!)} target="_blank" rel="noreferrer">{short(paidTx ?? s!.paidTx!)} ↗</a></td></tr>}
                   </tbody>
