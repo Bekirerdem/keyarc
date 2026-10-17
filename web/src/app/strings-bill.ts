@@ -45,6 +45,10 @@ export const B = defineStrings({
     "Everyone needs an Arc wallet address (any EVM wallet, e.g. MetaMask, works). They agree to their share with a free signature.",
     "Herkesin bir Arc cüzdan adresi olmalı (MetaMask gibi herhangi bir EVM cüzdanı olur). Payını ücretsiz bir imzayla onaylar.",
   ],
+  "b.membersHint": [
+    "These are the team's members, recorded in its chest; names are saved in this browser, so type them once. To leave someone off this invoice, set their share to 0. Adding or removing a member is a team vote, on the team page.",
+    "Bunlar ekibin kasada kayıtlı üyeleri; isimler bu tarayıcıda saklanır, bir kez yazman yeter. Birini bu faturaya katmamak için payını 0 yap. Üye eklemek ya da çıkarmak ekip sayfasında oyla olur.",
+  ],
   "b.reserveCut": ["{amt} USDC goes to shared costs first", "önce {amt} USDC ortak giderlere ayrılır"],
   "b.sharedOn": ["Set aside a share for shared costs", "Ortak giderler için pay ayır"],
   "b.sharedHint": [

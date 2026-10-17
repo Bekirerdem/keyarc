@@ -6,7 +6,7 @@ import { collectiveAbi, factoryAbi } from "../lib/abi";
 import { AGENT, FACTORY } from "../lib/contracts";
 import { toUsdc, usdc } from "../lib/format";
 import { useLang } from "../lib/i18n";
-import { saveNames, useMyChests, loadNames } from "../lib/team";
+import { saveNames, useMyChests, loadNames, namesFragment } from "../lib/team";
 import { useTx } from "../lib/tx";
 import { useChest } from "./useChest";
 import { Brand, OnArc, Wallet } from "./Wallet";
@@ -247,6 +247,7 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
           </div>
           {isNew && <button className="btn ghost small" style={{ marginTop: 10 }} onClick={() => setPeople([...people, { name: "", address: "", share: "0" }])}>{t("b.addPerson")}</button>}
           {isNew && people.length > 1 && <p className="hint" style={{ marginTop: 10 }}>{t("b.walletHint")}</p>}
+          {!isNew && <p className="hint" style={{ marginTop: 10 }}>{t("b.membersHint")}</p>}
           {gross > 0n && toReserve > 0n && <p className="mono" style={{ marginTop: 12 }}>{t("b.reserveCut", { amt: usdc(toReserve) })}</p>}
         </div>
 
@@ -300,7 +301,8 @@ function BillForm({ team, setTeam, teams, me, onDone }: {
 function Done({ chest, id, others, onAnother }: { chest: Address; id: Hex; others: string[]; onAnother: () => void }) {
   const { t } = useLang();
   const [copied, setCopied] = useState(false);
-  const link = `${window.location.origin}/pay/${chest}/${id}`;
+  // the names ride along so teammates see who is who; the client sees them too, which is fine for nicknames
+  const link = `${window.location.origin}/pay/${chest}/${id}${namesFragment(chest)}`;
   return (
     <>
       <main className="main">

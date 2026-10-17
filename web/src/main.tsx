@@ -7,6 +7,7 @@ import { wagmiConfig } from "./lib/arc";
 import { AppFooter } from "./app/Footer";
 import { RouteError } from "./app/RouteError";
 import { LangProvider } from "./lib/i18n";
+import { importNamesFromLink } from "./lib/team";
 import { ToastProvider } from "./lib/tx";
 import "./styles/app.css";
 import "./app/strings";
@@ -54,6 +55,9 @@ const router = createBrowserRouter([
   { path: "/pay/:chest/:id", element: app(<Pay />) },
   { path: "*", element: app(<Home />) },
 ].map((r) => ({ ...r, errorElement: <RouteError /> })));
+
+// before the first render, so pages read the names a teammate's link carried
+importNamesFromLink();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
